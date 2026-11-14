@@ -20,6 +20,7 @@ BRIGHT_MIN_LUMA = 200       # ... or "bright" if luminance > this (theme decides
 MIN_BLOB_FRACTION = 0.0005
 SLOT_TOLERANCE_DEG = 8.0    # how far a bulb may sit from its slot direction
 EDGE_ADDBACK_PX = 0.35      # anti-aliasing/JPEG shrink a thresholded body by about this much
+MAX_HOLE_FRACTION = 0.0015  # holes inside bodies larger than this fraction of the image are not filled
 
 
 class DecodeError(Exception):
@@ -42,8 +43,14 @@ def body_mask(bgr, polarity):
     m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
     inv = cv2.copyMakeBorder((1 - m).copy(), 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=1)
     cv2.floodFill(inv, None, (0, 0), 2)              # mark background reachable from the border
-    holes = (inv[1:-1, 1:-1] == 1)                   # non-body pixels not reachable = holes
-    m[holes] = 1
+    holes = (inv[1:-1, 1:-1] == 1).astype(np.uint8)  # non-body pixels not reachable = holes
+    # only fill SMALL holes (pinholes inside bodies); a big enclosed region (e.g. inside a
+    # decorative ring drawn in body colour) is background, not body
+    n, labels, stats, _ = cv2.connectedComponentsWithStats(holes, connectivity=4)
+    limit = MAX_HOLE_FRACTION * m.shape[0] * m.shape[1]
+    for lab in range(1, n):
+        if stats[lab, cv2.CC_STAT_AREA] < limit:
+            m[labels == lab] = 1
     return m
 
 
