@@ -35,19 +35,19 @@ THEMES = {
     "mandelbrot": dict(polarity="dark", bg=(0, 0, 93), body=(0, 0, 0), filament=(255, 255, 255), stars=False,
                        ramp=[(0.00, (255, 255, 255)), (0.06, (210, 248, 255)), (0.18, (90, 180, 255)),
                              (0.40, (25, 50, 225)), (0.75, (0, 0, 150)), (1.30, (0, 0, 93))],
-                       decor="minibrot", rays=0.0, clouds=0.0),
+                       decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
     "space": dict(polarity="bright", bg=(0, 0, 0), body=(255, 228, 236), filament=(120, 170, 255), stars=True,
                   ramp=[(0.00, (255, 120, 170)), (0.10, (150, 120, 230)), (0.25, (90, 130, 255)),
                         (0.55, (30, 60, 190)), (0.95, (8, 14, 60)), (1.40, (0, 0, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
     "ember": dict(polarity="dark", bg=(90, 12, 0), body=(0, 0, 0), filament=(255, 250, 200), stars=False,
                   ramp=[(0.00, (255, 255, 240)), (0.06, (255, 240, 120)), (0.18, (255, 150, 0)),
                         (0.40, (215, 40, 0)), (0.75, (140, 20, 0)), (1.30, (90, 12, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
     "emerald": dict(polarity="dark", bg=(0, 85, 45), body=(0, 0, 0), filament=(240, 255, 245), stars=False,
                     ramp=[(0.00, (255, 255, 255)), (0.06, (200, 255, 220)), (0.18, (60, 230, 140)),
                           (0.40, (0, 160, 90)), (0.75, (0, 110, 60)), (1.30, (0, 85, 45))],
-                    decor="minibrot", rays=0.0, clouds=0.0),
+                    decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
 }
 BG = THEMES["mandelbrot"]["bg"]
 
@@ -134,7 +134,10 @@ def make_style(rng):
     return dict(polarity=polarity, bg=bg, body=body, filament=filament, stars=stars, ramp=ramp,
                 decor=rng.choice(["minibrot", "spiral", "rings", "stars", "comets", "mixed"]),
                 rays=rng.choice([0.0, 0.0, rng.uniform(0.25, 0.6)]),
-                clouds=rng.choice([0.0, rng.uniform(0.3, 0.7)]))
+                clouds=rng.choice([0.0, rng.uniform(0.3, 0.7)]),
+                motion=rng.choice(["orbit", "orbit", "vortex", "radial", "wind"]),
+                streaks=rng.choice([10, 25, 50, 90]),
+                turbulence=rng.choice([0.0, 0.06, 0.12]))
 
 
 def style_for(words, theme=DEFAULT_THEME):
@@ -338,16 +341,19 @@ def mandelbrot(size, U, ss):
 
 
 def body_mask(symbols, U, size, rng, decor):
-    """Satellites + decoration in body colour (mode L). The Mandelbrot body is added separately."""
-    m = Image.new("L", (size, size), 0)
-    d = ImageDraw.Draw(m)
+    """(satellite bulbs, decoration) in body colour as two mode-L images.
+    The Mandelbrot body is added separately."""
+    mb = Image.new("L", (size, size), 0)
+    db = ImageDraw.Draw(mb)
     c = size / 2.0
     for i, sym in enumerate(symbols):
         si, di = codec.symbol_to_glyph(sym)
         rr, dist, ang = layout.bulb_geometry(i, si, di)
         x, y = layout.polar(c, c, dist * U, ang)
-        d.ellipse([x - rr * U, y - rr * U, x + rr * U, y + rr * U], fill=255)
+        db.ellipse([x - rr * U, y - rr * U, x + rr * U, y + rr * U], fill=255)
 
+    m = Image.new("L", (size, size), 0)
+    d = ImageDraw.Draw(m)
     placed = []
     for _ in range(rng.randint(4, 10)):
         kind = decor if decor != "mixed" else rng.choice(["minibrot", "spiral", "rings", "stars", "comets"])
@@ -369,10 +375,84 @@ def body_mask(symbols, U, size, rng, decor):
                 else:
                     draw_comet(d, x, y, a * 0.9, ang + rng.uniform(-30, 30))
                 break
-    if rng.random() < 0.35:
+    if rng.random() < 0.18:
         rr = rng.uniform(layout.DECOR_MIN_R + 0.2, layout.CANVAS_HALF - 0.3) * U
         d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=255, width=max(1, int(0.02 * U)))
-    return m
+    return mb, m
+
+
+# ---------------------------------------------------------------- motion
+def motion_trails(dist_bulbs, c, size, rng, mode, U):
+    """Comet-tail motion blur behind the data bulbs: ghost copies of their distance field
+    along the motion, fading with travel. Returns a distance-like field in U."""
+    K = 16
+    acc = np.full_like(dist_bulbs, 9.0)
+    sign = rng.choice([-1, 1])
+    total_angle = rng.uniform(22, 65) * sign
+    total_scale = rng.uniform(0.25, 0.5)
+    wind = rng.uniform(0, 2 * math.pi)
+    wind_len = rng.uniform(0.6, 1.2) * U
+    fade = rng.uniform(0.3, 0.6)
+    for k in range(1, K + 1):
+        t = k / K
+        if mode == "orbit":
+            M = cv2.getRotationMatrix2D((c, c), t * total_angle, 1.0)
+        elif mode == "vortex":
+            M = cv2.getRotationMatrix2D((c, c), t * total_angle, 1.0 + 0.5 * t * total_scale)
+        elif mode == "radial":
+            M = cv2.getRotationMatrix2D((c, c), 0.0, 1.0 + t * total_scale)
+        else:
+            M = np.array([[1, 0, t * wind_len * math.cos(wind)], [0, 1, t * wind_len * math.sin(wind)]], np.float32)
+        w = cv2.warpAffine(dist_bulbs, M, (size, size), flags=cv2.INTER_LINEAR,
+                           borderMode=cv2.BORDER_CONSTANT, borderValue=9.0)
+        acc = np.minimum(acc, w / (1.0 - 0.6 * t) + t * fade)     # tails get thinner and dimmer
+    return acc
+
+
+def energy_streaks(size, c, U, rng, mode, n):
+    """Gradient light streaks aligned with the motion (bright head, fading tail) plus a few
+    sparks. Returns an energy map in [0,1]."""
+    E = np.zeros((size, size), np.uint8)
+    wind = rng.uniform(0, 360)
+    for _ in range(n):
+        r = rng.uniform(1.1, layout.CANVAS_HALF - 0.2) * U
+        a = rng.uniform(0, 360)
+        x, y = layout.polar(c, c, r, a)
+        L = rng.uniform(0.3, 1.8) * U
+        if mode == "orbit":
+            d = a + 90 * rng.choice([-1, 1])
+        elif mode == "vortex":
+            d = a + 90 * rng.choice([-1, 1]) + rng.uniform(-35, 35)
+        elif mode == "radial":
+            d = a + rng.uniform(-6, 6)
+        else:
+            d = wind + rng.uniform(-8, 8)
+        S = 14
+        th = rng.choice([1, 1, 2, 3])
+        for s in range(S, 0, -1):                       # tail first, head last (head overwrites)
+            p0 = layout.polar(x, y, L * (s - 1) / S, d)
+            p1 = layout.polar(x, y, L * s / S, d)
+            val = int(255 * (1 - s / S) ** 1.6)
+            if val > 0:
+                cv2.line(E, (int(p0[0]), int(p0[1])), (int(p1[0]), int(p1[1])), val, th, cv2.LINE_AA)
+    for _ in range(n // 3):                              # sparks
+        r = rng.uniform(1.1, layout.CANVAS_HALF - 0.2) * U
+        x, y = layout.polar(c, c, r, rng.uniform(0, 360))
+        cv2.circle(E, (int(x), int(y)), rng.choice([1, 2]), 255, -1, cv2.LINE_AA)
+    E = cv2.GaussianBlur(E.astype(np.float32) / 255.0, (0, 0), max(0.6, 0.012 * U))
+    return np.clip(E * 1.4, 0, 1)
+
+
+def turbulence(field, T, amount, U):
+    """Domain-warp a field by the fractal texture: makes the fringe flicker like electricity."""
+    if amount <= 0:
+        return field
+    size = field.shape[0]
+    yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
+    T2 = np.roll(T, (size // 7, size // 3), axis=(0, 1))
+    mx = xx + (T - 0.5) * amount * U * 2
+    my = yy + (T2 - 0.5) * amount * U * 2
+    return cv2.remap(field, mx, my, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
 
 
 # ---------------------------------------------------------------- render
@@ -385,8 +465,11 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
     c = size / 2.0
 
     interior, band = mandelbrot(size, Us, ss)
-    mask = (np.array(body_mask(symbols, Us, size, rng, st["decor"])) > 127) | interior
+    mb, md = body_mask(symbols, Us, size, rng, st["decor"])
+    bulbs = np.array(mb) > 127
+    mask = bulbs | (np.array(md) > 127) | interior
     dist = cv2.distanceTransform((~mask).astype(np.uint8), cv2.DIST_L2, 5) / Us
+    dist_bulbs = cv2.distanceTransform((~bulbs).astype(np.uint8), cv2.DIST_L2, 5) / Us
 
     # seeded fractal texture (re-rolled until it has structure near the shapes)
     glow_zone = (dist > 0.03) & (dist < 1.0)
@@ -404,9 +487,18 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
         N = cv2.resize(_fbm(size // 4, rng), (size, size), interpolation=cv2.INTER_LINEAR)
         shape = shape * (1 - st["clouds"] + 2 * st["clouds"] * N)
     u_dist = dist / reach * shape
-    # authentic Mandelbrot fringe: bright where the escape count is high (near the set)
-    u_mandel = 1.3 * (1 - band) ** 2 * rng.uniform(0.9, 1.6)
+    # authentic Mandelbrot fringe: bright where the escape count is high (near the set),
+    # optionally domain-warped by the texture so it flickers
+    band_w = turbulence(band, T, st.get("turbulence", 0.0), Us)
+    u_mandel = 1.3 * (1 - band_w) ** 2 * rng.uniform(0.9, 1.6)
     u = np.minimum(u_dist, u_mandel)
+    # motion: trails behind the satellites + speed lines, all in glow colours
+    mode = st.get("motion", "orbit")
+    trails = motion_trails(dist_bulbs, c, size, rng, mode, Us)
+    u = np.minimum(u, trails / (0.34 * reach) + 0.08)         # narrow, slightly dimmer than the core halo
+    if st.get("streaks", 0):
+        E = energy_streaks(size, c, Us, rng, mode, st["streaks"])
+        u = np.minimum(u, 1.25 * (1 - E) ** 2 + 0.03)
 
     xs = np.array([s for s, _ in st["ramp"]], np.float32)
     cols = np.array([col for _, col in st["ramp"]], np.float32)

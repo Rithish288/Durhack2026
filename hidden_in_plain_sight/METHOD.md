@@ -29,7 +29,10 @@ one symbol, and everything else in the picture is a fractal seeded by the phrase
    - a **kaleidoscope fold** (1- to 12-fold mirror symmetry), a **swirl**, optional **rays** and
      **cloud** modulation of the glow, and how far the glow reaches;
    - the **decoration style**: mini-brots, spirals, orbit rings, star polygons or comets, and
-     sometimes a star field or a large orbit ring.
+     sometimes a star field or a large orbit ring;
+   - the **motion**: the satellites trail comet-tail motion blur along an orbit, a vortex, an
+     outward burst or a wind direction, with gradient light streaks and sparks aligned to it,
+     and the Mandelbrot fringe can be domain-warped so it flickers like electricity.
    The texture warps a distance field around the shapes into the glowing fringe, and is
    re-rolled from the same seed stream until it has visible structure near the shapes.
    Four fixed presets (mandelbrot, space, ember, emerald) are also available.
