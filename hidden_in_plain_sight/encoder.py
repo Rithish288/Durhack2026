@@ -22,7 +22,7 @@ from PIL import Image, ImageDraw
 import codec
 import layout
 
-DEFAULT_U = 70          # pixels per Mandelbrot unit in the output image
+DEFAULT_U = 92          # pixels per Mandelbrot unit in the output image (canvas ~626 px)
 DEFAULT_R = DEFAULT_U   # kept for test.py compatibility
 SUPERSAMPLE = 2
 DEFAULT_THEME = "auto"
@@ -422,12 +422,14 @@ def body_mask(symbols, U, size, rng, decor):
     for _ in range(rng.randint(4, 10)):
         kind = decor if decor != "mixed" else rng.choice(["minibrot", "spiral", "rings", "stars", "comets"])
         for _try in range(30):
-            rad = rng.uniform(layout.DECOR_MIN_R + 0.3, layout.CANVAS_HALF - 0.6) * U
+            rad = rng.uniform(layout.DECOR_MIN_R + 0.1, layout.CANVAS_HALF + 0.3) * U   # may sit at the corners
             ang = rng.uniform(0, 360)
             x, y = layout.polar(c, c, rad, ang)
-            if all(math.hypot(x - px, y - py) > 1.1 * U for px, py in placed):
+            if not (0.1 * U < x < size - 0.1 * U and 0.1 * U < y < size - 0.1 * U):
+                continue
+            if all(math.hypot(x - px, y - py) > 0.7 * U for px, py in placed):
                 placed.append((x, y))
-                a = rng.uniform(0.045, 0.085) * U
+                a = rng.uniform(0.03, 0.06) * U
                 if kind == "minibrot":
                     draw_minibrot(d, x, y, a, ang + 180 + rng.uniform(-25, 25))
                 elif kind == "spiral":
@@ -440,7 +442,7 @@ def body_mask(symbols, U, size, rng, decor):
                     draw_comet(d, x, y, a * 0.9, ang + rng.uniform(-30, 30))
                 break
     if rng.random() < 0.18:
-        rr = rng.uniform(layout.DECOR_MIN_R + 0.2, layout.CANVAS_HALF - 0.3) * U
+        rr = rng.uniform(layout.DECOR_MIN_R + 0.1, layout.CANVAS_HALF - 0.1) * U
         d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=255, width=max(1, int(0.02 * U)))
     return mb, m
 
@@ -572,7 +574,7 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
 
     if st["stars"]:
         yy, xx = np.mgrid[0:size, 0:size]
-        far = np.hypot(xx - c, yy - c) > 2.9 * Us
+        far = np.hypot(xx - c, yy - c) > 2.8 * Us
         n_star = int(size * size / 2500)
         for x, y in zip(rng.choices(range(size), k=n_star), rng.choices(range(size), k=n_star)):
             if far[y, x]:

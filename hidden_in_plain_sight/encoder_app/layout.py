@@ -33,12 +33,12 @@ N_DATA = 15
 SLOT_START = 40.0
 SLOT_STEP = 20.0
 SIZES = [0.06, 0.095, 0.13, 0.165]                                 # area-equivalent radius / U (2 bits)
-DISTS = [1.60, 1.75, 1.90, 2.05, 2.20, 2.35, 2.50, 2.65]           # centroid distance / U (3 bits)
+DISTS = [1.60, 1.73, 1.86, 1.99, 2.12, 2.25, 2.38, 2.51]           # centroid distance / U (3 bits)
 BABY_CLIP_R = 1.3          # a baby is the Mandelbrot set within this radius of its own origin
 BABY_EXTENT = 1.45         # max reach of a baby from its centroid, in units of its r_eq
 
-DECOR_MIN_R = 3.0          # decoration only outside this
-CANVAS_HALF = 4.5
+DECOR_MIN_R = 2.85         # decoration only outside this
+CANVAS_HALF = 3.4          # tight frame: the mother fills ~38% of the width
 UP = -90.0
 
 
