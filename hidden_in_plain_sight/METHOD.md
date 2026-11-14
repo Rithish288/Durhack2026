@@ -31,6 +31,8 @@ everything else in the picture (colours, fractal texture, motion) is seeded by t
      **cloud** modulation of the glow, and how far the glow reaches;
    - the **decoration style**: mini-brots, spirals, orbit rings, star polygons or comets, and
      sometimes a star field or a large orbit ring;
+   - the **fill**: the mother and the babies are usually not flat; they carry a very dark
+     (or very bright) contour-band pattern inside, kept within the decoder's body range;
    - the **motion**: the satellites trail comet-tail motion blur along an orbit, a vortex, an
      outward burst or a wind direction, with gradient light streaks and sparks aligned to it,
      and the Mandelbrot fringe can be domain-warped so it flickers like electricity.

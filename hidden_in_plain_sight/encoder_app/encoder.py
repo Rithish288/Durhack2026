@@ -35,19 +35,19 @@ THEMES = {
     "mandelbrot": dict(polarity="dark", bg=(0, 0, 93), body=(0, 0, 0), filament=(255, 255, 255), stars=False,
                        ramp=[(0.00, (255, 255, 255)), (0.06, (210, 248, 255)), (0.18, (90, 180, 255)),
                              (0.40, (25, 50, 225)), (0.75, (0, 0, 150)), (1.30, (0, 0, 93))],
-                       decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
+                       decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
     "space": dict(polarity="bright", bg=(0, 0, 0), body=(255, 228, 236), filament=(120, 170, 255), stars=True,
                   ramp=[(0.00, (255, 120, 170)), (0.10, (150, 120, 230)), (0.25, (90, 130, 255)),
                         (0.55, (30, 60, 190)), (0.95, (8, 14, 60)), (1.40, (0, 0, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
     "ember": dict(polarity="dark", bg=(90, 12, 0), body=(0, 0, 0), filament=(255, 250, 200), stars=False,
                   ramp=[(0.00, (255, 255, 240)), (0.06, (255, 240, 120)), (0.18, (255, 150, 0)),
                         (0.40, (215, 40, 0)), (0.75, (140, 20, 0)), (1.30, (90, 12, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
     "emerald": dict(polarity="dark", bg=(0, 85, 45), body=(0, 0, 0), filament=(240, 255, 245), stars=False,
                     ramp=[(0.00, (255, 255, 255)), (0.06, (200, 255, 220)), (0.18, (60, 230, 140)),
                           (0.40, (0, 160, 90)), (0.75, (0, 110, 60)), (1.30, (0, 85, 45))],
-                    decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0),
+                    decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
 }
 BG = THEMES["mandelbrot"]["bg"]
 
@@ -137,7 +137,29 @@ def make_style(rng):
                 clouds=rng.choice([0.0, rng.uniform(0.3, 0.7)]),
                 motion=rng.choice(["orbit", "orbit", "vortex", "radial", "wind"]),
                 streaks=rng.choice([10, 25, 50, 90]),
-                turbulence=rng.choice([0.0, 0.06, 0.12]))
+                turbulence=rng.choice([0.0, 0.06, 0.12]),
+                fill=_fill_style(rng, polarity, hA, hB))
+
+
+def _fill_style(rng, polarity, hA, hB):
+    """Fractal pattern INSIDE the bodies: two colours to blend between, and a band period.
+    Dark bodies stay at max channel <= 30, bright bodies at luma >= 234, so the decoder's
+    body mask (dark < 60, bright luma > 200) is untouched even after JPEG."""
+    if rng.random() < 0.2:
+        return None
+    if polarity == "dark":
+        cA = _hsv(hA, rng.uniform(0.6, 1.0), 0.12)
+        cB = _hsv(hB, rng.uniform(0.6, 1.0), 0.03)
+        cA = tuple(min(v, 30) for v in cA)
+        cB = tuple(min(v, 30) for v in cB)
+    else:
+        cA = _hsv(hA, 0.09, 1.0)
+        cB = _hsv(hB, 0.09, 1.0)
+        while _luma(cA) < 234:
+            cA = tuple(min(255, v + 4) for v in cA)
+        while _luma(cB) < 234:
+            cB = tuple(min(255, v + 4) for v in cB)
+    return dict(cA=cA, cB=cB, period=rng.uniform(0.05, 0.14), mode=rng.choice(["bands", "bands", "texture"]))
 
 
 def style_for(words, theme=DEFAULT_THEME):
@@ -560,6 +582,20 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
                     img[y + 1, x] = img[y, x + 1] = np.maximum(img[y, x], (b * 0.6,) * 3)
 
     img[mask] = st["body"]
+    fill = st.get("fill")
+    if fill:
+        # fractal inside the fractal: contour bands following each body's own shape,
+        # perturbed by the texture, blended between two in-range colours
+        inner = cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5) / Us
+        if fill["mode"] == "bands":
+            P = 0.5 + 0.5 * np.sin(2 * math.pi * inner / fill["period"] + 4.0 * T)
+        else:
+            P = T
+        # keep a flat rim of pure body colour along every edge: the pattern lives strictly
+        # inside, so JPEG ringing at the boundary behaves exactly as for a flat body
+        deep = mask & (inner > 0.035)
+        P = P[deep][..., None]
+        img[deep] = np.array(fill["cA"], np.float32) * (1 - P) + np.array(fill["cB"], np.float32) * P
     out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
     if ss > 1:
         out = out.resize((size // ss, size // ss), Image.LANCZOS)

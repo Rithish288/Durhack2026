@@ -19,6 +19,7 @@ BRIGHT_MIN_LUMA = 200       # ... or "bright" if luminance > this (theme decides
                             # Luminance (not min channel) for bright bodies: JPEG keeps luma at full resolution.
 MIN_BLOB_FRACTION = 0.0005
 SLOT_TOLERANCE_DEG = 8.0    # how far a bulb may sit from its slot direction
+EDGE_ADDBACK_PX = 0.35      # anti-aliasing/JPEG shrink a thresholded body by about this much
 
 
 class DecodeError(Exception):
@@ -36,8 +37,14 @@ def likeness(bgr, polarity):
 def body_mask(bgr, polarity):
     thr = DARK_MAX_CHANNEL if polarity == "dark" else 255 - BRIGHT_MIN_LUMA
     m = (likeness(bgr, polarity) < thr).astype(np.uint8)
-    # fill JPEG / resampling pinholes inside bodies
-    return cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    # close JPEG / resampling pinholes, then fill every enclosed hole: bodies may carry
+    # a pattern inside, and JPEG can lift a few of those pixels over the threshold
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    inv = cv2.copyMakeBorder((1 - m).copy(), 1, 1, 1, 1, cv2.BORDER_CONSTANT, value=1)
+    cv2.floodFill(inv, None, (0, 0), 2)              # mark background reachable from the border
+    holes = (inv[1:-1, 1:-1] == 1)                   # non-body pixels not reachable = holes
+    m[holes] = 1
+    return m
 
 
 # ---------------------------------------------------------------- marker
@@ -183,7 +190,7 @@ def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
             continue
         area, x, y, dist = best
         r_px = math.sqrt(area / math.pi)          # area-equivalent radius (shape-independent)
-        r = r_px / R
+        r = (r_px + EDGE_ADDBACK_PX) / R          # thresholding sits slightly inside the true edge
         si = int(np.argmin([abs(r - s) for s in layout.SIZES]))
         di = int(np.argmin([abs(dist - s) for s in layout.DISTS]))
         slots.append(dict(symbol=codec.glyph_to_symbol(si, di), size=si, dist=di, ok=True,
