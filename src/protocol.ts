@@ -25,6 +25,26 @@ export function renderShape(context: CanvasRenderingContext2D, shape: Shape, x: 
 export function loadDictionary(text: string): string[] {
   return text.split(/\r?\n/).map((word) => word.trim()).filter(Boolean).slice(0, MAX_WORDS);
 }
+export function loadDictionaryCsv(text: string): string[] {
+  const rows: string[][] = [];
+  let row: string[] = [], field = "", quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (character === '"') {
+      if (quoted && text[index + 1] === '"') { field += '"'; index++; }
+      else quoted = !quoted;
+    } else if (character === "," && !quoted) { row.push(field.trim()); field = ""; }
+    else if ((character === "\n" || character === "\r") && !quoted) {
+      if (character === "\r" && text[index + 1] === "\n") index++;
+      row.push(field.trim()); if (row.some(Boolean)) rows.push(row);
+      row = []; field = "";
+    } else field += character;
+  }
+  row.push(field.trim()); if (row.some(Boolean)) rows.push(row);
+  const firstValues = rows.map((fields) => fields.find(Boolean) ?? "").filter(Boolean);
+  const first = firstValues[0]?.toLowerCase();
+  return first && ["word", "words", "dictionary", "term"].includes(first) ? firstValues.slice(1, MAX_WORDS + 1) : firstValues.slice(0, MAX_WORDS);
+}
 export function wordToIndex(word: string, dictionary: string[]): number {
   return dictionary.findIndex((entry) => entry.toLowerCase() === word.trim().toLowerCase());
 }

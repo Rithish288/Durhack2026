@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildDenseArtwork, buildPacket, calculateCRC8, nibbleToSymbol, splitIntoSymbols } from "./protocol";
+import { buildDenseArtwork, buildPacket, calculateCRC8, loadDictionaryCsv, nibbleToSymbol, splitIntoSymbols } from "./protocol";
 describe("Symbol Pixels protocol", () => {
   it("maps nibbles without changing the alphabet", () => {
     expect(nibbleToSymbol(0)).toMatchObject({ shape: "circle", colour: "red" });
@@ -17,5 +17,8 @@ describe("Symbol Pixels protocol", () => {
     const artwork = buildDenseArtwork(packet, colours, 32);
     expect(artwork).toHaveLength(1024);
     expect(artwork[0].colour).toEqual([10, 20, 30]);
+  });
+  it("loads ordered CSV dictionaries and skips a word header", () => {
+    expect(loadDictionaryCsv("word,frequency\namber,10\ncipher,8\n\"garden, east\",2")).toEqual(["amber", "cipher", "garden, east"]);
   });
 });
