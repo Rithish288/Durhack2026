@@ -174,6 +174,12 @@ def decode_image(bgr, wordlist):
     if best is None:
         raise DecodeError(str(err))
     result = best[1]
+    found = sum(s["ok"] for s in result["slots"])
+    if found < layout.N_DATA - 3:
+        # Reed-Solomon can only repair 3 symbols; with more bulbs missing it could
+        # "succeed" on garbage, so refuse instead of guessing
+        result["error"] = f"only {found} of {layout.N_DATA} bulbs found"
+        return result
     try:
         result["words"], result["errata"] = codec.symbols_to_words(result["symbols"], wordlist)
     except ValueError as e:

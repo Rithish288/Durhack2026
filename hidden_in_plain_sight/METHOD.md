@@ -18,14 +18,20 @@ one symbol, and the glow around them is a Julia set seeded by the phrase itself.
 5. **Marker.** The big disc + antenna + period-2 bulb (the Mandelbrot silhouette) is the
    reference: its radius gives the scale, its antenna gives the rotation.
 6. **Art.** A SHA-256 hash of the phrase seeds everything decorative, so each phrase has its
-   own fractal. The seed picks:
-   - the **fractal formula family**: Julia, Burning Ship, cubic Multibrot, Tricorn or Phoenix,
-     plus its constant, zoom and band period;
-   - a **kaleidoscope fold** (1- to 8-fold mirror symmetry) and a **swirl** of the plane;
-   - how far the **glow** reaches, and where the decorative "mini-brots" sit.
-   The texture warps a distance field around the shapes into the glowing fringe. The texture is
+   own picture. The seed picks:
+   - the **palette**: dark or bright bodies, a deep / mid / light background, and a colour
+     scheme (analogous, complementary, triadic, split or mono) that builds the glow ramp;
+   - the **fractal formula**: Julia, Burning Ship, cubic Multibrot, Tricorn, Phoenix, Celtic,
+     Lambda, Sine or Newton basins, plus its constant, zoom and band period;
+   - a **kaleidoscope fold** (1- to 12-fold mirror symmetry), a **swirl**, optional **rays** and
+     **cloud** modulation of the glow, and how far the glow reaches;
+   - the **decoration style**: mini-brots, spirals, orbit rings, star polygons or comets, and
+     sometimes a star field or a large orbit ring.
+   The texture warps a distance field around the shapes into the glowing fringe, and is
    re-rolled from the same seed stream until it has visible structure near the shapes.
-   Four colour themes (mandelbrot, space, ember, emerald). None of this touches the data shapes.
+   Four fixed presets (mandelbrot, space, ember, emerald) are also available.
+   None of this touches the data shapes, and every colour is kept out of the decoder's
+   "body" range automatically.
 
 ## Decoding (receiver)
 

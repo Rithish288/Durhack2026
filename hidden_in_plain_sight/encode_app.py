@@ -15,7 +15,7 @@ import codec
 import encoder
 
 WORDLIST = None
-THEME_OPTIONS = "".join(f'<option value="{t}">{t}</option>' for t in encoder.THEMES)
+THEME_OPTIONS = "".join(f'<option value="{t}">{t}</option>' for t in ["auto", *encoder.THEMES])
 
 PAGE = r"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -85,7 +85,7 @@ class Handler(BaseHTTPRequestHandler):
         theme = body.get("theme", encoder.DEFAULT_THEME)
         if len(words) != 3 or not all(words):
             return self._send(json.dumps({"error": "please enter three words"}).encode(), "application/json")
-        if theme not in encoder.THEMES:
+        if theme != "auto" and theme not in encoder.THEMES:
             theme = encoder.DEFAULT_THEME
         try:
             img = encoder.render(words, WORDLIST, theme=theme)

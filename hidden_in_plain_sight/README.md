@@ -14,13 +14,13 @@ Rebuild them from the source files here with `python pack.py`.
 ## Development (this folder)
 
     python -m venv .venv && .venv/bin/pip install -r requirements.txt
-    .venv/bin/python encoder.py durhack_word_list.csv out.png apple river garden [mandelbrot|space|ember|emerald]
+    .venv/bin/python encoder.py durhack_word_list.csv out.png apple river garden [auto|mandelbrot|space|ember|emerald]
     .venv/bin/python decoder.py durhack_word_list.csv out.png overlay.png
     .venv/bin/python test.py durhack_word_list.csv 200 space     # accuracy under 6 conditions
 
 - `codec.py`   words ↔ 45 bits ↔ 9 data + 6 Reed-Solomon parity symbols; symbol ↔ (size, distance)
 - `layout.py`  all geometry in units of the main disc radius
-- `encoder.py` shapes + fractal glow → PNG (4 themes)
+- `encoder.py` shapes + fractal glow → PNG; "auto" style is generated from the words (palette, fractal family, kaleidoscope, decoration), 4 fixed presets too
 - `decoder.py` marker (scale, rotation) → bulbs (size, distance) → RS decode → overlay
 - `test.py`    clean / rotated+scaled / JPEG / grayscale / 3 bulbs tampered / everything at once
 - `gallery/`   examples + the two reference images

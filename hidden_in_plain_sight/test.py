@@ -39,12 +39,12 @@ def grayscale(bgr):
     return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
 
 
-def paint_slots(bgr, symbols, n, rng, theme=encoder.DEFAULT_THEME):
+def paint_slots(bgr, symbols, n, rng, style):
     """Tamper with n random bulbs: erase the real one and draw a bulb of a different symbol."""
     out = bgr.copy()
     R = encoder.DEFAULT_R
     c = bgr.shape[1] / 2.0
-    th = encoder.THEMES[theme]
+    th = style
     bg = tuple(int(v) for v in th["ramp"][0][1][::-1])     # the glow colour right next to a body
     body = tuple(int(v) for v in th["body"][::-1])
     for i in rng.sample(range(layout.N_DATA), n):
@@ -74,7 +74,6 @@ def main(argv):
     wordlist = codec.load_words(words_csv)
     print(f"word list: {words_csv} ({len(wordlist)} words), trials: {n_trials}, theme: {theme}")
     rng = random.Random(42)
-    bg = encoder.THEMES[theme]["bg"]
 
     conditions = ["clean", "rotate+scale", "jpeg q60", "grayscale", "3 bulbs tampered", "rotate+scale+jpeg+tampered"]
     ok = {c: 0 for c in conditions}
@@ -84,9 +83,11 @@ def main(argv):
     for t in range(n_trials):
         words = rng.sample(wordlist, 3)
         symbols = codec.words_to_symbols(words, wordlist)
+        style = encoder.style_for(words, theme)
+        bg = style["bg"]
         clean = to_bgr(encoder.render(words, wordlist, theme=theme))
         angle, scale = rng.uniform(0, 360), rng.uniform(0.7, 1.0)
-        painted = paint_slots(clean, symbols, 3, rng, theme)
+        painted = paint_slots(clean, symbols, 3, rng, style)
         variants = {
             "clean": clean,
             "rotate+scale": rotate_scale(clean, angle, scale, bg),
