@@ -42,7 +42,8 @@ def grayscale(bgr):
 def paint_slots(bgr, symbols, n, rng, style):
     """Tamper with n random bulbs: erase the real one and draw a bulb of a different symbol."""
     out = bgr.copy()
-    R = encoder.DEFAULT_R
+    R = encoder.DEFAULT_R * style.get("zoom", 1.0)
+    spin = style.get("spin", 0.0)
     c = bgr.shape[1] / 2.0
     th = style
     bg = tuple(int(v) for v in th["ramp"][0][1][::-1])     # the glow colour right next to a body
@@ -50,6 +51,7 @@ def paint_slots(bgr, symbols, n, rng, style):
     for i in rng.sample(range(layout.N_DATA), n):
         si, di = codec.symbol_to_glyph(symbols[i])
         rr, dist, ang = layout.bulb_geometry(i, si, di)
+        ang += spin
         x, y = layout.polar(c, c, dist * R, ang)
         cv2.circle(out, (int(round(x)), int(round(y))), int((layout.BABY_EXTENT * rr + 0.06) * R), bg, -1, cv2.LINE_AA)
         wrong = rng.choice([s for s in range(32) if s != symbols[i]])

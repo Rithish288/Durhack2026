@@ -35,19 +35,19 @@ THEMES = {
     "mandelbrot": dict(polarity="dark", bg=(0, 0, 93), body=(0, 0, 0), filament=(255, 255, 255), stars=False,
                        ramp=[(0.00, (255, 255, 255)), (0.06, (210, 248, 255)), (0.18, (90, 180, 255)),
                              (0.40, (25, 50, 225)), (0.75, (0, 0, 150)), (1.30, (0, 0, 93))],
-                       decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
+                       decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None, spin=0.0, zoom=1.0),
     "space": dict(polarity="bright", bg=(0, 0, 0), body=(255, 228, 236), filament=(120, 170, 255), stars=True,
                   ramp=[(0.00, (255, 120, 170)), (0.10, (150, 120, 230)), (0.25, (90, 130, 255)),
                         (0.55, (30, 60, 190)), (0.95, (8, 14, 60)), (1.40, (0, 0, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None, spin=0.0, zoom=1.0),
     "ember": dict(polarity="dark", bg=(90, 12, 0), body=(0, 0, 0), filament=(255, 250, 200), stars=False,
                   ramp=[(0.00, (255, 255, 240)), (0.06, (255, 240, 120)), (0.18, (255, 150, 0)),
                         (0.40, (215, 40, 0)), (0.75, (140, 20, 0)), (1.30, (90, 12, 0))],
-                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
+                  decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None, spin=0.0, zoom=1.0),
     "emerald": dict(polarity="dark", bg=(0, 85, 45), body=(0, 0, 0), filament=(240, 255, 245), stars=False,
                     ramp=[(0.00, (255, 255, 255)), (0.06, (200, 255, 220)), (0.18, (60, 230, 140)),
                           (0.40, (0, 160, 90)), (0.75, (0, 110, 60)), (1.30, (0, 85, 45))],
-                    decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None),
+                    decor="minibrot", rays=0.0, clouds=0.0, motion="orbit", streaks=0, turbulence=0.0, fill=None, spin=0.0, zoom=1.0),
 }
 BG = THEMES["mandelbrot"]["bg"]
 
@@ -138,7 +138,9 @@ def make_style(rng):
                 motion=rng.choice(["orbit", "orbit", "vortex", "radial", "wind"]),
                 streaks=rng.choice([10, 25, 50, 90]),
                 turbulence=rng.choice([0.0, 0.06, 0.12]),
-                fill=_fill_style(rng, polarity, hA, hB))
+                fill=_fill_style(rng, polarity, hA, hB),
+                spin=rng.uniform(0, 360),            # whole composition tilted (decoder reads any rotation)
+                zoom=rng.uniform(0.85, 1.12))        # whole composition scaled (decoder reads any scale)
 
 
 def _fill_style(rng, polarity, hA, hB):
@@ -334,14 +336,18 @@ def draw_comet(d, x, y, a, angle):
     d.ellipse([hx - 0.8 * a, hy - 0.8 * a, hx + 0.8 * a, hy + 0.8 * a], fill=255)
 
 
-def mandelbrot(size, U, ss):
+def mandelbrot(size, U, ss, spin=0.0):
     """Interior mask (full res, bool) and smooth escape band (full res, 0..1) of the real
-    Mandelbrot set, antenna up: re = (y - c) / U, im = (x - c) / U. Computed at 1x."""
+    Mandelbrot set. Unrotated: antenna up, re = (y - c) / U, im = (x - c) / U; `spin`
+    tilts the whole set clockwise by that many degrees. Computed at 1x."""
     lo = size // ss
     c = lo / 2.0
     u = U / ss
     ys, xs = np.mgrid[0:lo, 0:lo].astype(np.float32)
-    C = ((ys - c) / u + 1j * (xs - c) / u).astype(np.complex64)
+    dx, dy = xs - c, ys - c
+    sa, ca = math.sin(math.radians(spin)), math.cos(math.radians(spin))
+    dxr, dyr = dx * ca + dy * sa, -dx * sa + dy * ca          # un-rotate the pixel grid
+    C = (dyr / u + 1j * dxr / u).astype(np.complex64)
     z = np.zeros_like(C)
     alive = np.ones(C.shape, bool)
     count = np.zeros(C.shape, np.float32)
@@ -404,7 +410,7 @@ def draw_baby(canvas, x, y, r_eq_px, angle_deg, value=1.0):
     np.maximum(canvas, w * value, out=canvas)
 
 
-def body_mask(symbols, U, size, rng, decor):
+def body_mask(symbols, U, size, rng, decor, spin=0.0):
     """(baby Mandelbrots carrying the data, decoration) in body colour as two mode-L images.
     The mother Mandelbrot is added separately."""
     c = size / 2.0
@@ -412,7 +418,7 @@ def body_mask(symbols, U, size, rng, decor):
     for i, sym in enumerate(symbols):
         si, di = codec.symbol_to_glyph(sym)
         rr, dist, ang = layout.bulb_geometry(i, si, di)
-        x, y = layout.polar(c, c, dist * U, ang)
+        x, y = layout.polar(c, c, dist * U, ang + spin)
         draw_baby(babies, x, y, rr * U, rng.uniform(0, 360))
     mb = Image.fromarray((babies > 0.5).astype(np.uint8) * 255)
 
@@ -527,11 +533,12 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
     rng = random.Random(codec.message_seed(words))
     st = make_style(rng) if theme == "auto" else THEMES[theme]
     size = layout.canvas_size(U) * ss
-    Us = U * ss
+    Us = U * st.get("zoom", 1.0) * ss
+    spin = st.get("spin", 0.0)
     c = size / 2.0
 
-    interior, band = mandelbrot(size, Us, ss)
-    mb, md = body_mask(symbols, Us, size, rng, st["decor"])
+    interior, band = mandelbrot(size, Us, ss, spin)
+    mb, md = body_mask(symbols, Us, size, rng, st["decor"], spin)
     bulbs = np.array(mb) > 127
     mask = bulbs | (np.array(md) > 127) | interior
     dist = cv2.distanceTransform((~mask).astype(np.uint8), cv2.DIST_L2, 5) / Us
