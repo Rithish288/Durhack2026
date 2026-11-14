@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rubik's Cipher</title>
+<style>
+  :root { color-scheme: light; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; background: #f1f1f1; }
+  body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; color: #222; display: grid; place-items: start center; }
+  main { width: min(100%, 1050px); padding: 26px 18px 28px; text-align: center; }
+  h1 { font-size: 22px; font-weight: 600; letter-spacing: .02em; margin: 0 0 6px; }
+  .tag { font-size: 14px; color: #666; margin: 0 0 16px; }
+  .mode, .controls { display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin: 0 auto 14px; }
+  button, .btn { font: inherit; font-size: 14px; padding: 10px 20px; border-radius: 999px; border: 1px solid #d5d5d5; background: #fff; color: #333; cursor: pointer; text-decoration: none; display: inline-block; }
+  button[aria-pressed="true"], button.primary { background: #222; color: #fff; border-color: #222; }
+  button:disabled { opacity: .45; cursor: default; }
+  button:focus-visible, input:focus-visible { outline: 3px solid #7caeeb; outline-offset: 3px; }
+  input[type=text] { font: inherit; font-size: 14px; padding: 10px 16px; border-radius: 999px; border: 1px solid #d5d5d5; background: #fff; width: 150px; text-align: center; }
+  #stage { position: relative; width: min(100%, 560px); aspect-ratio: 1; margin: 0 auto 8px; touch-action: none; }
+  #stage canvas { width: 100%; height: 100%; display: block; border-radius: 18px; cursor: grab; }
+  #stage canvas:active { cursor: grabbing; }
+  #words { display: flex; justify-content: center; gap: 12px; min-height: 52px; margin: 4px auto 14px; flex-wrap: wrap; }
+  #words span { font-size: 26px; font-weight: 600; padding: 8px 20px; border-radius: 999px; border: 2px solid #161616; opacity: 0; transform: translateY(8px) scale(.96); transition: opacity 500ms ease, transform 500ms ease; }
+  #words span.show { opacity: 1; transform: none; }
+  .hint { font-size: 12px; color: #777; margin: 6px 0 0; min-height: 16px; word-break: break-word; }
+  .err { color: #c0392b; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
+  .thumbs { display: flex; justify-content: center; gap: 14px; flex-wrap: wrap; margin-top: 10px; }
+  .thumbs figure { margin: 0; font-size: 12px; color: #666; }
+  .thumbs img { width: 150px; height: 150px; display: block; border-radius: 12px; border: 1px solid #ddd; background: #fff; margin-bottom: 6px; }
+  section[hidden] { display: none; }
+  @media (max-width: 600px) { main { padding: 12px 10px 20px; } input[type=text] { width: 120px; } #words span { font-size: 20px; } }
+</style>
+</head>
+<body>
+<main>
+{% if render_only %}
+  <style>html, body { overflow: hidden; background: {{ config.background }}; } main { padding: 0; width: auto; }</style>
+  <div id="render-only"></div>
+{% else %}
+  <h1>Rubik's Cipher</h1>
+  <p class="tag">A scrambled cube looks like noise. This one is a sentence. Solve it and the words come out.</p>
+  <div class="mode" role="group" aria-label="Mode">
+    <button id="tab-encode" aria-pressed="true">Encode</button>
+    <button id="tab-decode" aria-pressed="false">Decode</button>
+  </div>
+  <div id="stage"><canvas id="cube"></canvas></div>
+  <div id="words"><span></span><span></span><span></span></div>
+
+  <section id="panel-encode">
+    <div class="controls">
+      <input type="text" id="w1" placeholder="word 1" autocomplete="off">
+      <input type="text" id="w2" placeholder="word 2" autocomplete="off">
+      <input type="text" id="w3" placeholder="word 3" autocomplete="off">
+      <button id="random">Random</button>
+      <button id="encode" class="primary">Encode</button>
+    </div>
+    <div class="controls">
+      <button id="export" disabled>Export two images</button>
+      <button id="replay" disabled>Replay scramble</button>
+    </div>
+    <div class="thumbs" id="thumbs"></div>
+  </section>
+
+  <section id="panel-decode" hidden>
+    <div class="controls">
+      <label class="btn">Choose the two images <input type="file" id="files" accept="image/png,image/jpeg" multiple style="display:none"></label>
+      <button id="decode" class="primary" disabled>Decode</button>
+    </div>
+    <div class="thumbs" id="thumbs-in"></div>
+  </section>
+
+  <p class="hint" id="status">drag the cube to look around &middot; three words become one scramble</p>
+  <p class="hint mono" id="detail"></p>
+{% endif %}
+</main>
+<script>window.CUBE_CONFIG = {{ config|tojson }}; window.RENDER_ONLY = {{ render_only|tojson }};</script>
+<script src="{{ url_for('static', filename='cube/three.min.js') }}"></script>
+<script src="{{ url_for('static', filename='cube/cube.js') }}"></script>
+</body>
+</html>
