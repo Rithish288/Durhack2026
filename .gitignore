@@ -1,0 +1,33 @@
+# Dependencies
+node_modules/
+
+# Vite build output
+dist/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# TypeScript build metadata
+*.tsbuildinfo
+
+# Test and coverage output
+coverage/
+.vitest/
+
+# Local editor and OS files
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Generated local images and exports
+e2e-export.*
+symbol-pixels.*
+2026*.jpg
+2026*.jpeg
+2026*.png
+2026*.webp
