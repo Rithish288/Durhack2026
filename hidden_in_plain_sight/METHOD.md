@@ -90,12 +90,16 @@ everything else in the picture (colours, fractal texture, motion) is seeded by t
 | clean | 200/200 | 200/200 |
 | rotated (any angle) + scaled 0.7–1.0 | 200/200 | 200/200 |
 | re-saved as JPEG (quality 60) | 200/200 | 200/200 |
-| converted to grayscale | 182/200 | **200/200** |
-| 3 of 15 babies tampered | 200/200 | 200/200 |
-| rotated + scaled + JPEG + 3 babies tampered | 200/200 | 200/200 |
+| converted to grayscale | 165/200 | **200/200** |
+| photo-like (camera keystone + blur + JPEG) | 160/200 | 174/200 |
+| 3 of 15 babies erased | 200/200 | 200/200 |
+| 3 of 15 babies swapped for other valid babies (adversarial) | 200/200 | 200/200 |
+| rotated + scaled + JPEG + 3 babies erased | 200/200 | 200/200 |
 
-Final design (baby Mandelbrots, in-body fill, tilt + zoom), 200 random phrases per column.
-Grayscale survives whenever the background is not near-black in luminance: always in the
-**space** preset, in most auto styles. Outside the deliberately tampered babies, at most one
-baby was misread in any run, and Reed-Solomon absorbed it. About 0.25 s per encode + decode.
+Final design, 200 random phrases per column. File-to-file (the challenge's channel) is perfect in
+every condition. Grayscale survives whenever the background is not near-black in luminance:
+always in the **space** preset, in most auto styles. Photographs are a bonus path: mild keystone
+is undone by the homography refinement; when a photo cannot be read reliably the decoder says
+so rather than returning a wrong phrase. About 0.2 s per encode + decode.
+
 
