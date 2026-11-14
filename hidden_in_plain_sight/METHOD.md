@@ -57,16 +57,16 @@ one symbol, and the glow around them is a Julia set seeded by the phrase itself.
 
 ## Numbers (test.py, 200 random phrases per theme, 6 conditions each)
 
-| condition | mandelbrot | space | ember | emerald |
-|---|---|---|---|---|
-| clean | 200/200 | 200/200 | 200/200 | 200/200 |
-| rotated (any angle) + scaled 0.7–1.0 | 200/200 | 200/200 | 200/200 | 200/200 |
-| re-saved as JPEG (quality 60) | 200/200 | 200/200 | 200/200 | 200/200 |
-| converted to grayscale | 85/200 | **200/200** | 65/200 | 41/200 |
-| 3 of 15 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 |
-| rotated + scaled + JPEG + 3 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 |
+| condition | **auto** (per-phrase style) | mandelbrot | space | ember | emerald |
+|---|---|---|---|---|---|
+| clean | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
+| rotated (any angle) + scaled 0.7–1.0 | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
+| re-saved as JPEG (quality 60) | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
+| converted to grayscale | 176/200 | 85/200 | **200/200** | 65/200 | 41/200 |
+| 3 of 15 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
+| rotated + scaled + JPEG + 3 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
 
-Grayscale only survives in the **space** theme: the dark themes' backgrounds (navy, deep red,
-deep green) are near-black in luminance, so a grayscale copy loses the body/background contrast.
+Grayscale survives whenever the background is not near-black in luminance: always in the **space**
+preset, in most auto styles, rarely in the deep navy/red/green presets.
 Outside the deliberately tampered bulbs, not a single bulb was misread in any run.
 About 0.2 s per encode + decode.
