@@ -143,21 +143,21 @@ def make_style(rng):
 
 def _fill_style(rng, polarity, hA, hB):
     """Fractal pattern INSIDE the bodies: two colours to blend between, and a band period.
-    Dark bodies stay at max channel <= 30, bright bodies at luma >= 234, so the decoder's
+    Dark bodies stay at max channel <= 46, bright bodies at luma >= 214, so the decoder's
     body mask (dark < 60, bright luma > 200) is untouched even after JPEG."""
     if rng.random() < 0.2:
         return None
     if polarity == "dark":
-        cA = _hsv(hA, rng.uniform(0.6, 1.0), 0.12)
-        cB = _hsv(hB, rng.uniform(0.6, 1.0), 0.03)
-        cA = tuple(min(v, 30) for v in cA)
-        cB = tuple(min(v, 30) for v in cB)
+        cA = _hsv(hA, rng.uniform(0.7, 1.0), 0.18)
+        cB = _hsv(hB, rng.uniform(0.7, 1.0), 0.02)
+        cA = tuple(min(v, 46) for v in cA)
+        cB = tuple(min(v, 46) for v in cB)
     else:
-        cA = _hsv(hA, 0.09, 1.0)
-        cB = _hsv(hB, 0.09, 1.0)
-        while _luma(cA) < 234:
+        cA = _hsv(hA, 0.16, 1.0)
+        cB = _hsv(hB, 0.04, 1.0)
+        while _luma(cA) < 214:
             cA = tuple(min(255, v + 4) for v in cA)
-        while _luma(cB) < 234:
+        while _luma(cB) < 214:
             cB = tuple(min(255, v + 4) for v in cB)
     return dict(cA=cA, cB=cB, period=rng.uniform(0.05, 0.14), mode=rng.choice(["bands", "bands", "texture"]))
 
@@ -593,7 +593,7 @@ def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
             P = T
         # keep a flat rim of pure body colour along every edge: the pattern lives strictly
         # inside, so JPEG ringing at the boundary behaves exactly as for a flat body
-        deep = mask & (inner > 0.035)
+        deep = mask & (inner > 0.04)
         P = P[deep][..., None]
         img[deep] = np.array(fill["cA"], np.float32) * (1 - P) + np.array(fill["cB"], np.float32) * P
     out = Image.fromarray(np.clip(img, 0, 255).astype(np.uint8))
