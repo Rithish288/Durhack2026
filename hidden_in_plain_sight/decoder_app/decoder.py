@@ -19,7 +19,7 @@ BRIGHT_MIN_LUMA = 200       # ... or "bright" if luminance > this (theme decides
                             # Luminance (not min channel) for bright bodies: JPEG keeps luma at full resolution.
 MIN_BLOB_FRACTION = 0.0005
 SLOT_TOLERANCE_DEG = 8.0    # how far a bulb may sit from its slot direction
-EDGE_ADDBACK_PX = 0.35      # anti-aliasing/JPEG shrink a thresholded body by about this much
+EDGE_ADDBACK_PX = 0.35      # thresholding sits slightly inside the true edge
 MAX_HOLE_FRACTION = 0.0015  # holes inside bodies larger than this fraction of the image are not filled
 
 
@@ -132,9 +132,101 @@ def find_marker(blob, dmax):
         ux, uy = (C2[0] - C1[0]) / D, (C2[1] - C1[1]) / D
         U = D / layout.D0
         P1 = (C1[0] + (layout.P1_RE - layout.C1_RE) * U * -ux, C1[1] + (layout.P1_RE - layout.C1_RE) * U * -uy)
-    ox, oy = C1[0] + layout.C1_RE * U * ux, C1[1] + layout.C1_RE * U * uy
     rot = (math.degrees(math.atan2(uy, ux)) - layout.UP + 180) % 360 - 180
-    return ox, oy, U, rot
+    r = math.radians(rot)
+    Rm = np.array([[math.cos(r), -math.sin(r)], [math.sin(r), math.cos(r)]])   # canonical (x=im,y=re) -> image
+
+    # --- affine correction for photos: the eroded mother is a known shape, so its measured
+    # covariance gives the stretch / shear S of the picture (S = U * I for a clean file)
+    dist = cv2.distanceTransform(blob, cv2.DIST_L2, 5)
+    region = dist > layout.ER_FRAC * dmax
+    ys, xs = np.nonzero(region)
+    cm = np.array([xs.mean(), ys.mean()])
+    cov_px = np.cov(np.vstack([xs - cm[0], ys - cm[1]]))
+    S0 = np.array(layout.ER_COV)
+    M = Rm.T @ cov_px @ Rm
+    S = _solve_affine(S0, M)
+    ev = np.linalg.eigvalsh(S)
+    stretch = float(ev.max() / max(ev.min(), 1e-9)) if ev.min() > 0 else 99.0
+    if ev.min() <= 0 or stretch > 1.3 or stretch < 1.03:
+        S = U * np.eye(2)                                  # clean file (or implausible): pure similarity
+    else:
+        S = S * (U / math.sqrt(float(np.linalg.det(S))))  # keep the precise centroid-based scale,
+                                                          # use the covariance only for the anisotropy
+    q1 = np.array([0.0, layout.C1_RE])                    # the cardioid-part centroid in canonical coords
+    O = np.array(C1) - Rm @ S @ q1
+    detS = float(np.linalg.det(S))
+    U_eff = math.sqrt(detS)
+    A = np.linalg.inv(S) @ Rm.T
+    return dict(ox=float(O[0]), oy=float(O[1]), U=U_eff, rot=rot, R=Rm, S=S, Sinv=np.linalg.inv(S),
+                C1=(float(C1[0]), float(C1[1])), C2=(float(C2[0]), float(C2[1])),
+                # image px -> canonical units, and the local area scale (px^2 per unit^2) at a canonical point
+                to_canon=lambda p, A=A, O=O: A @ (np.asarray(p, float) - O),
+                area_scale=lambda q, detS=detS: detS,
+                stretch=float(np.linalg.eigvalsh(S).max() / np.linalg.eigvalsh(S).min()))
+
+
+def angular_rms(mk, slots):
+    """RMS deviation (degrees) of the found babies from their slot directions: ~0 for a clean
+    file, degrees for a photograph taken at an angle."""
+    errs = []
+    for i, s in enumerate(slots):
+        if not s["ok"]:
+            continue
+        q = mk["to_canon"](s["pos"])
+        ang = math.degrees(math.atan2(q[1], q[0]))
+        errs.append((ang - layout.data_angle(i) + 180) % 360 - 180)
+    return float(np.sqrt(np.mean(np.square(errs)))) if errs else 0.0
+
+
+def refine_homography(mk, slots):
+    """Photos: fit a full homography (canonical units -> image px) from the mother's two
+    landmarks plus every found baby, whose DIRECTION is known exactly (slot angle) even though
+    its distance is data. Returns a new marker dict with perspective-aware mappings, or mk."""
+    src, dst = [], []
+    src += [(0.0, layout.C1_RE), (0.0, layout.C2_RE)]
+    dst += [mk["C1"], mk["C2"]]
+    for i, s in enumerate(slots):
+        if not s["ok"]:
+            continue
+        a = math.radians(layout.data_angle(i))
+        src.append((s["d"] * math.cos(a), s["d"] * math.sin(a)))     # canonical (x=im, y=re)
+        dst.append(s["pos"])
+    if len(src) < 8:
+        return mk
+    H, _ = cv2.findHomography(np.float32(src), np.float32(dst), 0)
+    if H is None:
+        return mk
+    Hi = np.linalg.inv(H)
+
+    def to_canon(p, Hi=Hi):
+        v = Hi @ np.array([p[0], p[1], 1.0])
+        return v[:2] / v[2]
+
+    def area_scale(q, H=H):
+        eps = 1e-3
+        def fwd(x, y):
+            v = H @ np.array([x, y, 1.0])
+            return v[:2] / v[2]
+        jx = (fwd(q[0] + eps, q[1]) - fwd(q[0] - eps, q[1])) / (2 * eps)
+        jy = (fwd(q[0], q[1] + eps) - fwd(q[0], q[1] - eps)) / (2 * eps)
+        return abs(float(jx[0] * jy[1] - jx[1] * jy[0]))
+    out = dict(mk)
+    out["to_canon"] = to_canon
+    out["area_scale"] = area_scale
+    out["H"] = H
+    return out
+
+
+def _solve_affine(S0, M):
+    """Symmetric positive S with S @ S0 @ S = M."""
+    w, V = np.linalg.eigh(S0)
+    S0h = V @ np.diag(np.sqrt(w)) @ V.T
+    S0hi = V @ np.diag(1 / np.sqrt(w)) @ V.T
+    inner = S0h @ M @ S0h
+    w2, V2 = np.linalg.eigh(inner)
+    w2 = np.clip(w2, 1e-9, None)
+    return S0hi @ (V2 @ np.diag(np.sqrt(w2)) @ V2.T) @ S0hi
 
 
 def refine_radius(bgr, cx, cy, R0, stem_angle=None, polarity="dark"):
@@ -169,39 +261,49 @@ def refine_radius(bgr, cx, cy, R0, stem_angle=None, polarity="dark"):
 
 
 # ---------------------------------------------------------------- bulbs
-def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
-    """For each slot pick the dark blob sitting in that direction; size and distance -> symbol."""
-    min_area = 0.35 * math.pi * (layout.SIZES[0] * R) ** 2
-    max_area = 2.0 * math.pi * (layout.SIZES[-1] * R) ** 2
+def read_bulbs(mk, marker_label, stats, cents):
+    """For each slot pick the body blob sitting in that direction, in canonical coordinates
+    (rotation, scale and any photo distortion undone by mk["to_canon"]); area -> size,
+    radius -> distance."""
+    U = mk["U"]
+    to_canon, area_scale = mk["to_canon"], mk["area_scale"]
+    min_area = 0.3 * math.pi * (layout.SIZES[0] * U) ** 2
+    max_area = 2.2 * math.pi * (layout.SIZES[-1] * U) ** 2
+    cand = []
+    for lab in range(1, stats.shape[0]):
+        if lab == marker_label:
+            continue
+        area = stats[lab, cv2.CC_STAT_AREA]
+        if not (min_area <= area <= max_area):
+            continue
+        # babies are compact; ring arcs, streak-like debris and antennas are not
+        w, h = stats[lab, cv2.CC_STAT_WIDTH], stats[lab, cv2.CC_STAT_HEIGHT]
+        if area < 0.3 * w * h or max(w, h) > 4.0 * math.sqrt(area / math.pi):
+            continue
+        q = to_canon(cents[lab])
+        dist = float(math.hypot(q[0], q[1]))
+        if not (layout.DISTS[0] - 0.14 <= dist <= layout.DISTS[-1] + 0.14):
+            continue
+        cand.append((lab, area, q, dist, math.degrees(math.atan2(q[1], q[0]))))
     slots = []
     for i in range(layout.N_DATA):
-        a = layout.data_angle(i) + rot
+        a = layout.data_angle(i)
         best = None
-        for lab in range(1, stats.shape[0]):
-            if lab == marker_label:
-                continue
-            area = stats[lab, cv2.CC_STAT_AREA]
-            if not (min_area <= area <= max_area):
-                continue
-            x, y = cents[lab]
-            dist = math.hypot(x - cx, y - cy) / R
-            if not (layout.DISTS[0] - 0.12 <= dist <= layout.DISTS[-1] + 0.12):
-                continue
-            ang = math.degrees(math.atan2(y - cy, x - cx))
+        for lab, area, q, dist, ang in cand:
             if abs((ang - a + 180) % 360 - 180) > SLOT_TOLERANCE_DEG:
                 continue
-            if best is None or area > best[0]:
-                best = (area, x, y, dist)
+            if best is None or area > best[1]:
+                best = (lab, area, q, dist)
         if best is None:
-            slots.append(dict(symbol=0, size=0, dist=0, ok=False, pos=layout.polar(cx, cy, 2.0 * R, a), r_px=0))
+            slots.append(dict(symbol=0, size=0, dist=0, ok=False, pos=(float(cents[0][0]), float(cents[0][1])), r_px=0))
             continue
-        area, x, y, dist = best
-        r_px = math.sqrt(area / math.pi)          # area-equivalent radius (shape-independent)
-        r = (r_px + EDGE_ADDBACK_PX) / R          # thresholding sits slightly inside the true edge
+        lab, area, q, dist = best
+        r_px = math.sqrt(area / math.pi) + EDGE_ADDBACK_PX
+        r = math.sqrt((r_px ** 2) / area_scale(q))           # radius in units (local scale)
         si = int(np.argmin([abs(r - s) for s in layout.SIZES]))
         di = int(np.argmin([abs(dist - s) for s in layout.DISTS]))
         slots.append(dict(symbol=codec.glyph_to_symbol(si, di), size=si, dist=di, ok=True,
-                          pos=(x, y), r_px=r_px, r=round(r, 3), d=round(dist, 3)))
+                          pos=(float(cents[lab][0]), float(cents[lab][1])), r_px=r_px, r=round(r, 3), d=round(dist, 3)))
     return slots
 
 
@@ -225,11 +327,19 @@ def _decode_polarity(bgr, polarity):
         mk = find_marker(blob, dmax)
         if mk is None:
             continue
-        ox, oy, U, rot = mk
-        slots = read_bulbs(bgr, polarity, ox, oy, U, rot, lab, stats, cents)
+        slots = read_bulbs(mk, lab, stats, cents)
         found = sum(s["ok"] for s in slots)
+        rms = angular_rms(mk, slots)
+        degraded = found < layout.N_DATA or rms > 1.0 or mk["stretch"] > 1.02
+        if found >= 8 and degraded:
+            # second pass: perspective-aware (photographs). Skipped for clean files.
+            mk2 = refine_homography(mk, slots)
+            slots2 = read_bulbs(mk2, lab, stats, cents)
+            if sum(s["ok"] for s in slots2) >= found:
+                mk, slots, found = mk2, slots2, sum(s["ok"] for s in slots2)
         if best is None or found > best[0]:
-            best = (found, dict(centre=(ox, oy), R=U, rot=rot, slots=slots, polarity=polarity,
+            best = (found, dict(centre=(mk["ox"], mk["oy"]), R=mk["U"], rot=mk["rot"], slots=slots, polarity=polarity,
+                                stretch=round(mk["stretch"], 3), perspective="H" in mk, degraded=degraded, angular_rms=round(rms, 2),
                                 symbols=[s["symbol"] for s in slots], words=None, errata=[], error=None))
     if best is None:
         raise DecodeError("no Mandelbrot body found")
@@ -253,15 +363,31 @@ def decode_image(bgr, wordlist):
         raise DecodeError(str(err))
     result = best[1]
     found = sum(s["ok"] for s in result["slots"])
+    missing = [i for i, s in enumerate(result["slots"]) if not s["ok"]]
     if found < layout.N_DATA - 3:
-        # Reed-Solomon can only repair 3 symbols; with more bulbs missing it could
-        # "succeed" on garbage, so refuse instead of guessing
+        # with more than 3 babies missing the code could "succeed" on garbage: refuse
         result["error"] = f"only {found} of {layout.N_DATA} bulbs found"
         return result
     try:
-        result["words"], result["errata"] = codec.symbols_to_words(result["symbols"], wordlist)
+        # missing babies are erasures (known positions): they cost half as much as errors
+        words, errata = codec.symbols_to_words(result["symbols"], wordlist, erasures=missing)
     except ValueError as e:
         result["error"] = str(e)
+        return result
+    # plausibility: a correction at a baby we DID measure must be a neighbouring grid cell of
+    # the measurement (one size step and/or one distance step away). A miscorrection lands on
+    # an arbitrary cell, so this rejects most of them instead of returning a wrong phrase.
+    corrected = codec.words_to_symbols(words, wordlist)
+    for i in (errata if result.get("degraded") else []):
+        s = result["slots"][i]
+        if not s["ok"]:
+            continue
+        si0, di0 = codec.symbol_to_glyph(s["symbol"])
+        si1, di1 = codec.symbol_to_glyph(corrected[i])
+        if abs(si1 - si0) > 1 or abs(di1 - di0) > 1:
+            result["error"] = f"unreliable read: correction at baby {i} is not a neighbouring cell"
+            return result
+    result["words"], result["errata"] = words, errata
     return result
 
 

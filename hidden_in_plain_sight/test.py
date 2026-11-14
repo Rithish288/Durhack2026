@@ -34,9 +34,38 @@ def jpeg(bgr, quality=60):
     return cv2.imdecode(buf, cv2.IMREAD_COLOR)
 
 
+def photo_like(bgr, rng, bg):
+    """Mild keystone perspective (camera not square to the screen), blur, JPEG."""
+    h, w = bgr.shape[:2]
+    k = 0.06
+    src = np.float32([[0, 0], [w, 0], [w, h], [0, h]])
+    dst = np.float32([[rng.uniform(0, k) * w, rng.uniform(0, k) * h], [w - rng.uniform(0, k) * w, rng.uniform(0, k) * h],
+                      [w - rng.uniform(0, k) * w, h - rng.uniform(0, k) * h], [rng.uniform(0, k) * w, h - rng.uniform(0, k) * h]])
+    H = cv2.getPerspectiveTransform(src, dst)
+    bgc = tuple(int(v) for v in bg[::-1])
+    out = cv2.warpPerspective(bgr, H, (w, h), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_CONSTANT, borderValue=bgc)
+    out = cv2.GaussianBlur(out, (0, 0), rng.uniform(0.7, 1.4))
+    return jpeg(out, 75)
+
+
 def grayscale(bgr):
     g = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
     return cv2.cvtColor(g, cv2.COLOR_GRAY2BGR)
+
+
+def erase_slots(bgr, symbols, n, rng, style):
+    """Realistic damage: n random babies painted over with the halo colour (they vanish)."""
+    out = bgr.copy()
+    R = encoder.DEFAULT_R * style.get("zoom", 1.0)
+    spin = style.get("spin", 0.0)
+    c = bgr.shape[1] / 2.0
+    bg = tuple(int(v) for v in style["ramp"][0][1][::-1])
+    for i in rng.sample(range(layout.N_DATA), n):
+        si, di = codec.symbol_to_glyph(symbols[i])
+        rr, dist, ang = layout.bulb_geometry(i, si, di)
+        x, y = layout.polar(c, c, dist * R, ang + spin)
+        cv2.circle(out, (int(round(x)), int(round(y))), int((layout.BABY_EXTENT * rr + 0.06) * R), bg, -1, cv2.LINE_AA)
+    return out
 
 
 def paint_slots(bgr, symbols, n, rng, style):
@@ -77,7 +106,8 @@ def main(argv):
     print(f"word list: {words_csv} ({len(wordlist)} words), trials: {n_trials}, theme: {theme}")
     rng = random.Random(42)
 
-    conditions = ["clean", "rotate+scale", "jpeg q60", "grayscale", "3 bulbs tampered", "rotate+scale+jpeg+tampered"]
+    conditions = ["clean", "rotate+scale", "jpeg q60", "grayscale", "photo-like (keystone+blur)",
+                  "3 babies erased", "3 babies swapped (adversarial)", "rotate+scale+jpeg+3 erased"]
     ok = {c: 0 for c in conditions}
     raw_err = {c: [] for c in conditions}
     failures = []
@@ -90,13 +120,16 @@ def main(argv):
         clean = to_bgr(encoder.render(words, wordlist, theme=theme))
         angle, scale = rng.uniform(0, 360), rng.uniform(0.7, 1.0)
         painted = paint_slots(clean, symbols, 3, rng, style)
+        erased = erase_slots(clean, symbols, 3, rng, style)
         variants = {
             "clean": clean,
             "rotate+scale": rotate_scale(clean, angle, scale, bg),
             "jpeg q60": jpeg(clean),
             "grayscale": grayscale(clean),
-            "3 bulbs tampered": painted,
-            "rotate+scale+jpeg+tampered": jpeg(rotate_scale(painted, angle, scale, bg)),
+            "photo-like (keystone+blur)": photo_like(clean, rng, bg),
+            "3 babies erased": erased,
+            "3 babies swapped (adversarial)": painted,
+            "rotate+scale+jpeg+3 erased": jpeg(rotate_scale(erased, angle, scale, bg)),
         }
         for cond, img in variants.items():
             res = try_decode(img, wordlist)
@@ -108,10 +141,10 @@ def main(argv):
                 failures.append((cond, words, res.get("words"), res.get("error"), round(angle), round(scale, 2)))
     dt = time.time() - t0
 
-    print(f"\n{'condition':<28}{'accuracy':>10}{'mean raw symbol errors':>26}{'max':>6}")
+    print(f"\n{'condition':<34}{'accuracy':>10}{'mean raw symbol errors':>26}{'max':>6}")
     for c in conditions:
         errs = raw_err[c] or [0]
-        print(f"{c:<28}{ok[c]:>5}/{n_trials:<4}{np.mean(errs):>22.2f}{max(errs):>8}")
+        print(f"{c:<34}{ok[c]:>5}/{n_trials:<4}{np.mean(errs):>22.2f}{max(errs):>8}")
     print(f"\n{dt:.1f}s total, {dt / (len(conditions) * n_trials) * 1000:.0f} ms per encode+decode")
     if failures:
         print(f"\n{len(failures)} failures (first 10):")

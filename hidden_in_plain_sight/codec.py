@@ -95,12 +95,13 @@ def words_to_symbols(words, wordlist):
     return [int(s) for s in coded]
 
 
-def symbols_to_words(symbols, wordlist):
-    """15 read symbols -> (words, errata_positions). Raises ValueError if unrecoverable."""
+def symbols_to_words(symbols, wordlist, erasures=()):
+    """15 read symbols -> (words, errata_positions). `erasures` = positions known to be
+    unreadable (cost 1 each; unknown errors cost 2; budget 6). Raises ValueError if unrecoverable."""
     if len(symbols) != N_SYMBOLS:
         raise ValueError(f"need {N_SYMBOLS} symbols")
     try:
-        res = _rs.decode(bytearray(int(s) & 31 for s in symbols))
+        res = _rs.decode(bytearray(int(s) & 31 for s in symbols), erase_pos=list(erasures))
     except ReedSolomonError as e:
         raise ValueError(f"Reed-Solomon decode failed: {e}")
     if isinstance(res, tuple):          # reedsolo >= 1.5: (msg, msg+ecc, errata_pos)

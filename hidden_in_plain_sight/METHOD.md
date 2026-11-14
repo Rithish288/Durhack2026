@@ -56,8 +56,16 @@ everything else in the picture (colours, fractal texture, motion) is seeded by t
    Its area → area-equivalent radius → size → 2 bits; its centroid distance → orbit → 3 bits.
    Both are independent of the baby's rotation, and the four size levels differ by 2.5x in
    area, so JPEG softening of the babies' fine bulbs does not matter.
-4. **Correct and translate.** Reed-Solomon fixes up to 3 wrong babies; 45 bits → 3 indices → 3 words.
-5. An overlay PNG shows every measurement and which bulbs were corrected.
+4. **Correct and translate.** Babies that could not be found are passed to Reed-Solomon as
+   *erasures* (known positions, cost 1 each); misread babies are *errors* (cost 2). The budget
+   is 6, so 3 misread babies, or up to 6 missing ones, are repaired; 45 bits → 3 indices → 3 words.
+5. **Photographs.** If a baby is missing or the babies' directions deviate from their slots,
+   the read is treated as a photo: a full homography is fitted from the mother's two landmarks
+   plus the known slot directions of the found babies (their angles are a built-in calibration
+   grid), and every baby is re-measured through it, which undoes camera keystone. In that mode a
+   correction is only accepted if the corrected symbol is a neighbouring cell of what was
+   measured, so a bad photo says "unreadable" instead of returning a wrong phrase.
+6. An overlay PNG shows every measurement and which babies were corrected.
 
 ## Why it is different (and easy to say on stage)
 
@@ -65,8 +73,9 @@ everything else in the picture (colours, fractal texture, motion) is seeded by t
   any colour theme, and the same decoder reads all of them without being told which.
 - **The art is the fingerprint.** The fractal glow is seeded by the secret, so each phrase has
   its own unique nebula — the picture *is* the message, not a wrapper around it.
-- **Robust by design.** Rotation and scale are undone by the marker; JPEG re-saving and
-  3 vandalised bulbs are tolerated by the measurement margins and Reed-Solomon.
+- **Robust by design.** Rotation and scale are undone by the marker; JPEG re-saving, blur,
+  mild camera keystone and 3 destroyed babies are tolerated by the measurement margins,
+  the homography refinement and Reed-Solomon with erasures.
 - **Nothing machine-readable to the eye.** No grid, no modules, no quiet zone — a Mandelbrot
   family portrait. Nobody expects the babies' sizes and orbits to be a sentence.
 - **Why not hide the data in the fractal itself?** Because fractals are chaotic: a tiny

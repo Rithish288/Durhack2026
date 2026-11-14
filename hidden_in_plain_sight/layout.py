@@ -27,6 +27,12 @@ C1_RE = -0.1618            # centroid of the cardioid part (re > -0.75), precise
 C2_RE = -1.0073            # centroid of the bulb part (-1.28 < re <= -0.75), precise pass
 D0 = C1_RE - C2_RE         # 0.8454 U between the two centroids
 INSCRIBED_R = 0.5033        # inscribed radius of the main body (d2/d1 = 0.489)
+# eroded mother region (distance > 0.12 * inscribed radius): used to measure the affine
+# distortion of a photo (stretch / shear) and the blur-induced radius bias
+ER_FRAC = 0.12
+ER_CM = (-0.00000, -0.2663)       # centroid (x=im, y=re) in units, calibrated on real renders
+ER_COV = ((0.09236, -0.000000), (-0.000000, 0.12792))   # covariance in units^2 (x=im, y=re)
+ER_AREA = 1.1534                   # area in units^2
 
 # data satellites: 15 slots over 280 degrees, leaving the antenna side free
 N_DATA = 15
