@@ -155,18 +155,21 @@
   const clearWords = () => wordEls.forEach(el => { el.textContent = ""; el.className = ""; });
   const showWord = (i, w) => { wordEls[i].textContent = w; wordEls[i].style.background = ["#f0a9aa", "#eee59d", "#96c6e9"][i]; requestAnimationFrame(() => wordEls[i].className = "show"); };
 
+  const has = id => !!$(id);
+  const on = (id, ev, fn) => { if (has(id)) $(id).addEventListener(ev, fn); };
   function setMode(mode) {
-    $("tab-encode").setAttribute("aria-pressed", mode === "encode"); $("tab-decode").setAttribute("aria-pressed", mode === "decode");
-    $("panel-encode").hidden = mode !== "encode"; $("panel-decode").hidden = mode !== "decode";
+    if (has("tab-encode")) { $("tab-encode").setAttribute("aria-pressed", mode === "encode"); $("tab-decode").setAttribute("aria-pressed", mode === "decode"); }
+    if (has("panel-encode")) $("panel-encode").hidden = mode !== "encode";
+    if (has("panel-decode")) $("panel-decode").hidden = mode !== "decode";
     clearWords(); detail("");
     status(mode === "encode" ? "type three words, or press Random" : "load the two exported images, then Decode");
   }
-  $("tab-encode").onclick = () => setMode("encode"); $("tab-decode").onclick = () => setMode("decode");
+  on("tab-encode", "click", () => setMode("encode")); on("tab-decode", "click", () => setMode("decode"));
 
-  $("random").onclick = async () => { const r = await (await fetch("/random")).json(); ["w1", "w2", "w3"].forEach((id, i) => $(id).value = r.words[i]); };
-  ["w1", "w2", "w3"].forEach(id => $(id).addEventListener("keydown", e => { if (e.key === "Enter") $("encode").click(); }));
+  on("random", "click", async () => { const r = await (await fetch("/random")).json(); ["w1", "w2", "w3"].forEach((id, i) => $(id).value = r.words[i]); });
+  ["w1", "w2", "w3"].forEach(id => on(id, "keydown", e => { if (e.key === "Enter") $("encode").click(); }));
 
-  $("encode").onclick = async () => {
+  on("encode", "click", async () => {
     if (busy) return;
     const words = ["w1", "w2", "w3"].map(id => $(id).value.trim());
     clearWords(); detail(""); $("thumbs").innerHTML = ""; $("export").disabled = $("replay").disabled = true;
@@ -180,26 +183,26 @@
     status(`${res.scramble.length} moves. The cube now says "${words.join(" ")}". Export it.`);
     detail(`45 bits: ${res.bits}`);
     $("export").disabled = $("replay").disabled = false;
-  };
+  });
 
-  $("replay").onclick = async () => {
+  on("replay", "click", async () => {
     if (busy || !state.scramble) return;
     resetCube(); setFacelets(CFG.solved);
     await play(state.scramble, MOVE_MS, (i) => status(`scrambling: ${state.scramble.slice(0, i).join(" ")}`));
     status(`${state.scramble.length} moves. Export it.`);
-  };
+  });
 
-  $("export").onclick = () => {
+  on("export", "click", () => {
     if (busy) return;
     const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
     const pngs = ["A", "B"].map(v => ({ view: v, name: `cube_${stamp}_${v}.png`, url: renderView(v) }));
     $("thumbs").innerHTML = pngs.map(p => `<figure><img src="${p.url}" alt="view ${p.view}"><a class="btn" download="${p.name}" href="${p.url}">Save ${p.view}</a></figure>`).join("");
     pngs.forEach((p, i) => setTimeout(() => { const a = document.createElement("a"); a.href = p.url; a.download = p.name; document.body.appendChild(a); a.click(); a.remove(); }, i * 400));
     status("two images saved. Only the pictures travel; the words are in the stickers.");
-  };
+  });
 
   let chosen = [];
-  $("files").addEventListener("change", e => {
+  on("files", "change", e => {
     chosen = [...e.target.files].slice(0, 2);
     $("thumbs-in").innerHTML = "";
     chosen.forEach(f => { const img = document.createElement("img"); img.src = URL.createObjectURL(f); const fig = document.createElement("figure"); fig.appendChild(img); fig.append(f.name); $("thumbs-in").appendChild(fig); });
@@ -207,7 +210,7 @@
     status(chosen.length === 2 ? "ready to decode" : "choose both images (A and B)");
   });
 
-  $("decode").onclick = async () => {
+  on("decode", "click", async () => {
     if (busy || chosen.length !== 2) return;
     clearWords(); detail("");
     const fd = new FormData(); chosen.forEach((f, i) => fd.append("img" + i, f));
@@ -225,7 +228,7 @@
     });
     status(`solved. "${res.words.join(" ")}"`);
     detail(`45 bits: ${res.bits}`);
-  };
+  });
 
-  resetCube(); setFacelets(CFG.solved); setMode("encode");
+  resetCube(); setFacelets(CFG.solved); setMode(CFG.mode === "decode" ? "decode" : "encode");
 })();

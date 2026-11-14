@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Rubik's Cipher</title>
+<title>Rubik's Cipher{% if config.mode == 'encode' %} · Encode{% elif config.mode == 'decode' %} · Decode{% endif %}</title>
 <style>
   :root { color-scheme: light; }
   * { box-sizing: border-box; }
@@ -24,6 +24,7 @@
   #words { display: flex; justify-content: center; gap: 12px; min-height: 52px; margin: 4px auto 14px; flex-wrap: wrap; }
   #words span { font-size: 26px; font-weight: 600; padding: 8px 20px; border-radius: 999px; border: 2px solid #161616; opacity: 0; transform: translateY(8px) scale(.96); transition: opacity 500ms ease, transform 500ms ease; }
   #words span.show { opacity: 1; transform: none; }
+  .pill { font-size: 13px; padding: 8px 18px; border-radius: 999px; background: #e4e4e4; color: #555; }
   .hint { font-size: 12px; color: #777; margin: 6px 0 0; min-height: 16px; word-break: break-word; }
   .err { color: #c0392b; }
   .mono { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; letter-spacing: .04em; }
@@ -42,13 +43,18 @@
 {% else %}
   <h1>Rubik's Cipher</h1>
   <p class="tag">A scrambled cube looks like noise. This one is a sentence. Solve it and the words come out.</p>
+  {% if config.mode == 'both' %}
   <div class="mode" role="group" aria-label="Mode">
     <button id="tab-encode" aria-pressed="true">Encode</button>
     <button id="tab-decode" aria-pressed="false">Decode</button>
   </div>
+  {% else %}
+  <div class="mode"><span class="pill">{{ 'Encode · sender' if config.mode == 'encode' else 'Decode · receiver' }}</span></div>
+  {% endif %}
   <div id="stage"><canvas id="cube"></canvas></div>
   <div id="words"><span></span><span></span><span></span></div>
 
+  {% if config.mode != 'decode' %}
   <section id="panel-encode">
     <div class="controls">
       <input type="text" id="w1" placeholder="word 1" autocomplete="off">
@@ -63,7 +69,9 @@
     </div>
     <div class="thumbs" id="thumbs"></div>
   </section>
+  {% endif %}
 
+  {% if config.mode != 'encode' %}
   <section id="panel-decode" hidden>
     <div class="controls">
       <label class="btn">Choose the two images <input type="file" id="files" accept="image/png,image/jpeg" multiple style="display:none"></label>
@@ -71,6 +79,7 @@
     </div>
     <div class="thumbs" id="thumbs-in"></div>
   </section>
+  {% endif %}
 
   <p class="hint" id="status">drag the cube to look around &middot; three words become one scramble</p>
   <p class="hint mono" id="detail"></p>

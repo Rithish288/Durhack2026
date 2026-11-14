@@ -2,3 +2,6 @@ pillow
 opencv-python-headless
 numpy
 reedsolo
+# cube prototype (cube_app.py)
+flask
+kociemba

@@ -7,15 +7,21 @@ remains the fallback.
 
 ## Run
 
+Two separate sites, like the fractal version: the sender runs the encode app, the receiver runs the decode app
+(different computers, both offline; only the two PNGs travel).
+
 ```bash
 cd hidden_in_plain_sight
 ../.venv/bin/pip install -r requirements.txt      # adds flask + kociemba
-../.venv/bin/python cube_app.py                   # opens http://127.0.0.1:8770
+../.venv/bin/python cube_encode_app.py            # sender   -> http://127.0.0.1:8771
+../.venv/bin/python cube_decode_app.py            # receiver -> http://127.0.0.1:8772
+../.venv/bin/python cube_app.py                   # dev only: both tabs on http://127.0.0.1:8770
+python pack.py                                    # builds cube_encoder_app/ and cube_decoder_app/ to copy to each computer
 ```
 
-Encode tab: type three words (or Random) -> the cube animates the scramble -> **Export two images** saves
+Encode site: type three words (or Random) -> the cube animates the scramble -> **Export two images** saves
 `cube_<time>_A.png` and `cube_<time>_B.png` (fixed cameras at opposite corners, so all six faces are covered).
-Decode tab: choose those two files -> Decode -> the cube animates the solve and the words appear one by one.
+Decode site: choose those two files -> Decode -> the cube animates the solve and the words appear one by one.
 Drag the cube to look around, double-click to reset the view.
 
 ## Pipeline
@@ -40,7 +46,8 @@ pair), the orientation/parity laws, or the 16 check bits.
 | `cube.py` | facelet geometry, move tables, facelets <-> cubies, integer <-> state, solver wrapper |
 | `cube_codec.py` | words <-> 45 bits <-> 61-bit payload (check bits) <-> state |
 | `cube_vision.py` | fixed-camera projection, sticker sampling, synthetic renders for tests |
-| `cube_app.py` | Flask: `/`, `POST /encode`, `POST /decode`, `/random`, `/render` (test harness) |
+| `cube_app.py` | Flask: `/`, `POST /encode`, `POST /decode`, `/random`, `/render` (test harness); `MODE` picks which half is live |
+| `cube_encode_app.py`, `cube_decode_app.py` | the two entry points (sender / receiver) |
 | `templates/cube.html`, `static/cube/cube.js` | Three.js cube (r128, vendored), drag view, move animation, export |
 | `test_cube.py`, `test_cube_vision.py` | move/solver agreement, round trips, synthetic image round trip |
 
