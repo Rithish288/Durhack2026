@@ -1,4 +1,7 @@
-"""Decoder: Mandelbrot-style PNG -> 3 words (+ overlay PNG showing what was read).
+"""Decoder: Mandelbrot PNG -> 3 words (+ overlay PNG showing what was read).
+
+Scale and rotation come from the Mandelbrot itself: the centroids of the main cardioid
+and the period-2 bulb (after erosion) are 0.825 units apart and lie on the antenna axis.
 
 usage: python decoder.py words.csv in.png overlay.png
 """
@@ -38,60 +41,99 @@ def body_mask(bgr, polarity):
 
 
 # ---------------------------------------------------------------- marker
-def find_marker(bgr, mask, labels, stats, polarity="dark"):
-    """Return (cx, cy, R, rot_deg, label). The marker is the most disc-like dark blob
-    with the largest inscribed radius; the antenna gives the rotation."""
-    h, w = bgr.shape[:2]
-    best = None
-    for lab in range(1, stats.shape[0]):
-        area = stats[lab, cv2.CC_STAT_AREA]
-        if area < MIN_BLOB_FRACTION * h * w:
-            continue
-        blob = (labels == lab).astype(np.uint8)
+def landmarks(blob, dist=None):
+    """Two incentres of a Mandelbrot body blob from its distance transform:
+    P1 = main cardioid (global peak), P2 = period-2 bulb (next peak away from P1).
+    Returns (P1, d1, P2, d2) with sub-pixel peak positions, or None."""
+    if dist is None:
         dist = cv2.distanceTransform(blob, cv2.DIST_L2, 5)
-        dmax = float(dist.max())
-        if dmax < 4:
-            continue
-        roundness = area / (math.pi * dmax * dmax)   # disc + antenna + bulb ~ 1.1..1.6
-        if not (0.85 < roundness < 2.0):
-            continue
-        if best is None or dmax > best[0]:
-            best = (dmax, blob, dist, lab)
-    if best is None:
-        raise DecodeError("no main body found")
-    dmax, blob, dist, lab = best
-    core = dist > 0.6 * dmax                      # erodes antenna and bulb away
-    ys, xs = np.nonzero(core)
-    cx, cy = float(xs.mean()), float(ys.mean())
-    R = dmax + 0.5
-    yy, xx = np.nonzero(blob)
-    d = np.hypot(xx - cx, yy - cy)
-    sel = (d > 1.15 * R) & (d < 2.2 * R)
-    if sel.sum() < 3:
-        raise DecodeError("no antenna found")
-    vx, vy = (xx[sel] - cx).mean(), (yy[sel] - cy).mean()
-    stem_angle = math.degrees(math.atan2(vy, vx))
-    rot = (stem_angle - layout.UP + 180) % 360 - 180
-    R = refine_radius(bgr, cx, cy, R, stem_angle, polarity)
-    return cx, cy, R, rot, lab
+    d1 = float(dist.max())
+    if d1 < 4:
+        return None
+    y1, x1 = np.unravel_index(int(np.argmax(dist)), dist.shape)
+    H, W = dist.shape
+    yy, xx = np.mgrid[0:H, 0:W]
+
+    def refine(px, py, dpk, frac, radius):
+        sel = (dist > frac * dpk) & ((xx - px) ** 2 + (yy - py) ** 2 < radius * radius)
+        wts = (dist[sel] - frac * dpk)
+        if wts.sum() <= 0:
+            return float(px), float(py)
+        return float((xx[sel] * wts).sum() / wts.sum()), float((yy[sel] * wts).sum() / wts.sum())
+    P1 = refine(x1, y1, d1, 0.85, 0.6 * d1)
+    far = dist.copy()
+    far[(xx - P1[0]) ** 2 + (yy - P1[1]) ** 2 < (1.15 * d1) ** 2] = 0
+    d2 = float(far.max())
+    if d2 < 2:
+        return None
+    y2, x2 = np.unravel_index(int(np.argmax(far)), far.shape)
+    P2 = refine(x2, y2, d2, 0.8, 1.2 * d2)
+    return P1, d1, P2, d2
+
+
+NECK_RE = -0.75          # the cardioid and the period-2 bulb touch here
+BULB_END_RE = -1.28      # the bulb ends here; beyond is the antenna
+
+
+def split_centroids(blob, P1, U, ux, uy):
+    """Cut the body at the neck (perpendicular to the antenna axis) and return the centroids
+    of the cardioid part and the bulb part. These average thousands of pixels, so they are
+    far more precise than the distance-transform peaks."""
+    ys, xs = np.nonzero(blob)
+    dx, dy = xs - P1[0], ys - P1[1]
+    re = layout.P1_RE - (dx * ux + dy * uy) / U            # estimated Mandelbrot coordinates
+    im = (dx * -uy + dy * ux) / U
+    card = (re > NECK_RE) & (np.abs(im) < 0.9)
+    bulb = (re <= NECK_RE) & (re > BULB_END_RE) & (np.abs(im) < 0.45)
+    if card.sum() < 20 or bulb.sum() < 10:
+        return None
+    C1 = (float(xs[card].mean()), float(ys[card].mean()))
+    C2 = (float(xs[bulb].mean()), float(ys[bulb].mean()))
+    return C1, C2
+
+
+def find_marker(blob, dmax):
+    """Given a candidate body blob, return (ox, oy, U, rot_deg) or None.
+       U   = pixels per Mandelbrot unit, rot = antenna rotation clockwise from up,
+       (ox, oy) = pixel position of complex 0.
+    Pass 1: distance-transform peaks (cardioid + bulb incentres) give a coarse frame.
+    Pass 2: cut the body at the neck, use the two part centroids (precise)."""
+    lm = landmarks(blob)
+    if lm is None:
+        return None
+    P1, d1, P2, d2 = lm
+    D = math.hypot(P2[0] - P1[0], P2[1] - P1[1])
+    if not (0.3 < d2 / d1 < 0.7) or not (1.3 < D / d1 < 2.2):
+        return None
+    U = D / layout.PEAK_D0
+    ux, uy = (P2[0] - P1[0]) / D, (P2[1] - P1[1]) / D
+    for _ in range(2):
+        sc = split_centroids(blob, P1, U, ux, uy)
+        if sc is None:
+            return None
+        C1, C2 = sc
+        D = math.hypot(C2[0] - C1[0], C2[1] - C1[1])
+        if D < 3:
+            return None
+        ux, uy = (C2[0] - C1[0]) / D, (C2[1] - C1[1]) / D
+        U = D / layout.D0
+        P1 = (C1[0] + (layout.P1_RE - layout.C1_RE) * U * -ux, C1[1] + (layout.P1_RE - layout.C1_RE) * U * -uy)
+    ox, oy = C1[0] + layout.C1_RE * U * ux, C1[1] + layout.C1_RE * U * uy
+    rot = (math.degrees(math.atan2(uy, ux)) - layout.UP + 180) % 360 - 180
+    return ox, oy, U, rot
 
 
 def refine_radius(bgr, cx, cy, R0, stem_angle=None, polarity="dark"):
-    """Sub-pixel disc radius from radial profiles (median over directions, skipping
-    the antenna if given): where the body-likeness crosses 100. Used for the main
-    disc AND for every bulb, so any threshold / JPEG / resampling bias cancels in the ratio."""
+    """Sub-pixel radius of a round body from radial profiles: the median crossing between
+    the inside plateau and the halo immediately outside the edge (works for any theme,
+    grayscale and JPEG). Used for every satellite bulb."""
     gray = likeness(bgr, polarity)
     rs = np.linspace(0.5 * R0, 1.6 * R0, int(2.2 * R0) + 10)
     edges = []
     for a in np.arange(0, 360, 4.0):
-        if stem_angle is not None and abs((a - stem_angle + 180) % 360 - 180) < 35:
-            continue
         xs = (cx + rs * math.cos(math.radians(a))).astype(np.float32).reshape(1, -1)
         ys = (cy + rs * math.sin(math.radians(a))).astype(np.float32).reshape(1, -1)
         prof = cv2.remap(gray, xs, ys, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)[0]
-        # crossing level = half-way between the inside plateau and the halo immediately
-        # outside the edge (1.5-4.5 px out), so the fitted edge sits on the true boundary
-        # for any theme, in grayscale and after JPEG
         p_in = float(np.median(prof[rs < 0.8 * R0]))
         near = (rs > R0 + 1.5) & (rs < R0 + 4.5)
         if near.sum() < 2:
@@ -109,7 +151,7 @@ def refine_radius(bgr, cx, cy, R0, stem_angle=None, polarity="dark"):
     if len(edges) < 10:
         return R0
     R = float(np.median(edges))
-    return R if abs(R - R0) < 0.12 * R0 else R0      # sanity: never drift far from the inscribed radius
+    return R if abs(R - R0) < 0.12 * R0 else R0
 
 
 # ---------------------------------------------------------------- bulbs
@@ -129,7 +171,7 @@ def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
                 continue
             x, y = cents[lab]
             dist = math.hypot(x - cx, y - cy) / R
-            if not (layout.DISTS[0] - 0.3 <= dist <= layout.DISTS[-1] + 0.3):
+            if not (layout.DISTS[0] - 0.12 <= dist <= layout.DISTS[-1] + 0.12):
                 continue
             ang = math.degrees(math.atan2(y - cy, x - cx))
             if abs((ang - a + 180) % 360 - 180) > SLOT_TOLERANCE_DEG:
@@ -137,7 +179,7 @@ def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
             if best is None or area > best[0]:
                 best = (area, x, y, dist)
         if best is None:
-            slots.append(dict(symbol=0, size=0, dist=0, ok=False, pos=layout.polar(cx, cy, 2.7 * R, a), r_px=0))
+            slots.append(dict(symbol=0, size=0, dist=0, ok=False, pos=layout.polar(cx, cy, 2.0 * R, a), r_px=0))
             continue
         area, x, y, dist = best
         r_px = refine_radius(bgr, x, y, math.sqrt(area / math.pi), None, polarity)
@@ -150,12 +192,34 @@ def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
 
 
 def _decode_polarity(bgr, polarity):
+    """Try the three most disc-like big blobs as the Mandelbrot body; keep the reading
+    that finds the most satellites."""
     mask = body_mask(bgr, polarity)
     n, labels, stats, cents = cv2.connectedComponentsWithStats(mask, connectivity=8)
-    cx, cy, R, rot, mlab = find_marker(bgr, mask, labels, stats, polarity)
-    slots = read_bulbs(bgr, polarity, cx, cy, R, rot, mlab, stats, cents)
-    return dict(centre=(cx, cy), R=R, rot=rot, slots=slots, polarity=polarity,
-                symbols=[s["symbol"] for s in slots], words=None, errata=[], error=None)
+    h, w = bgr.shape[:2]
+    cands = []
+    for lab in range(1, n):
+        if stats[lab, cv2.CC_STAT_AREA] < MIN_BLOB_FRACTION * h * w:
+            continue
+        blob = (labels == lab).astype(np.uint8)
+        dmax = float(cv2.distanceTransform(blob, cv2.DIST_L2, 5).max())
+        if dmax >= 4:
+            cands.append((dmax, lab, blob))
+    cands.sort(key=lambda t: -t[0])
+    best = None
+    for dmax, lab, blob in cands[:3]:
+        mk = find_marker(blob, dmax)
+        if mk is None:
+            continue
+        ox, oy, U, rot = mk
+        slots = read_bulbs(bgr, polarity, ox, oy, U, rot, lab, stats, cents)
+        found = sum(s["ok"] for s in slots)
+        if best is None or found > best[0]:
+            best = (found, dict(centre=(ox, oy), R=U, rot=rot, slots=slots, polarity=polarity,
+                                symbols=[s["symbol"] for s in slots], words=None, errata=[], error=None))
+    if best is None:
+        raise DecodeError("no Mandelbrot body found")
+    return best[1]
 
 
 def decode_image(bgr, wordlist):
@@ -192,11 +256,15 @@ def draw_overlay(bgr, res):
     out = bgr.copy()
     cx, cy = res["centre"]
     R, rot = res["R"], res["rot"]
-    t = max(1, int(R / 25))
+    t = max(1, int(R / 35))
     WHITE, RED = ((255, 255, 255) if res["polarity"] == "dark" else (0, 255, 255)), (0, 0, 255)
-    cv2.circle(out, (int(cx), int(cy)), int(R), WHITE, t)
-    (x0, y0), (x1, y1) = layout.stem_segment(cx, cy, R, rot)
-    cv2.line(out, (int(cx), int(cy)), (int(x1), int(y1)), RED, t)
+    # landmarks: origin, cardioid centroid, period-2 bulb centroid, antenna direction
+    c1 = layout.polar(cx, cy, -layout.C1_RE * R, layout.UP + rot)
+    c2 = layout.polar(cx, cy, -layout.C2_RE * R, layout.UP + rot)
+    cv2.line(out, (int(c1[0]), int(c1[1])), (int(c2[0]), int(c2[1])), RED, t)
+    for p in (c1, c2):
+        cv2.circle(out, (int(p[0]), int(p[1])), 3 * t, RED, -1)
+    cv2.drawMarker(out, (int(cx), int(cy)), WHITE, cv2.MARKER_CROSS, 6 * t, t)
     errata = set(res["errata"])
     for i, s in enumerate(res["slots"]):
         a = layout.data_angle(i) + rot

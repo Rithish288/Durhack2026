@@ -22,7 +22,8 @@ from PIL import Image, ImageDraw
 import codec
 import layout
 
-DEFAULT_R = 50
+DEFAULT_U = 70          # pixels per Mandelbrot unit in the output image
+DEFAULT_R = DEFAULT_U   # kept for test.py compatibility
 SUPERSAMPLE = 2
 DEFAULT_THEME = "auto"
 
@@ -308,41 +309,55 @@ def draw_comet(d, x, y, a, angle):
     d.ellipse([hx - 0.8 * a, hy - 0.8 * a, hx + 0.8 * a, hy + 0.8 * a], fill=255)
 
 
-def black_mask(symbols, R, size, rng, decor):
-    """Everything in body colour: marker, data bulbs, decoration (mode L)."""
+def mandelbrot(size, U, ss):
+    """Interior mask (full res, bool) and smooth escape band (full res, 0..1) of the real
+    Mandelbrot set, antenna up: re = (y - c) / U, im = (x - c) / U. Computed at 1x."""
+    lo = size // ss
+    c = lo / 2.0
+    u = U / ss
+    ys, xs = np.mgrid[0:lo, 0:lo].astype(np.float32)
+    C = ((ys - c) / u + 1j * (xs - c) / u).astype(np.complex64)
+    z = np.zeros_like(C)
+    alive = np.ones(C.shape, bool)
+    count = np.zeros(C.shape, np.float32)
+    n_iter = 160
+    with np.errstate(all="ignore"):
+        for i in range(n_iter):
+            z[alive] = z[alive] ** 2 + C[alive]
+            esc = alive & (np.abs(z) > 4)
+            count[esc] = i + 1 - np.log2(np.log(np.abs(z[esc]) + 1e-9) + 1e-9)
+            alive &= ~esc
+    band = np.log1p(np.nan_to_num(count)) / math.log1p(n_iter)
+    band[alive] = 1.0
+    # keep the body only near the origin + the antenna strip (satellites live further out)
+    keep = (np.abs(C) < layout.MANDEL_CLIP_R) | ((np.abs(C.imag) < layout.ANTENNA_HALF_WIDTH) & (C.real < 0))
+    interior = (alive & keep).astype(np.float32)
+    interior = cv2.resize(interior, (size, size), interpolation=cv2.INTER_LINEAR) > 0.5
+    band = cv2.resize(band, (size, size), interpolation=cv2.INTER_LINEAR)
+    return interior, band
+
+
+def body_mask(symbols, U, size, rng, decor):
+    """Satellites + decoration in body colour (mode L). The Mandelbrot body is added separately."""
     m = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(m)
     c = size / 2.0
-
-    # marker: main disc + antenna + period-2 bulb + tip dot
-    (x0, y0), (x1, y1) = layout.stem_segment(c, c, R)
-    d.line([(x0, y0), (x1, y1)], fill=255, width=int(layout.STEM_WIDTH * R))
-    bx, by = layout.polar(c, c, layout.P2_BULB_AT * R, layout.UP)
-    r = layout.P2_BULB_R * R
-    d.ellipse([bx - r, by - r, bx + r, by + r], fill=255)
-    r = layout.TIP_DOT_R * R
-    d.ellipse([x1 - r, y1 - r, x1 + r, y1 + r], fill=255)
-    d.ellipse([c - R, c - R, c + R, c + R], fill=255)
-
-    # data bulbs
     for i, sym in enumerate(symbols):
         si, di = codec.symbol_to_glyph(sym)
         rr, dist, ang = layout.bulb_geometry(i, si, di)
-        x, y = layout.polar(c, c, dist * R, ang)
-        d.ellipse([x - rr * R, y - rr * R, x + rr * R, y + rr * R], fill=255)
+        x, y = layout.polar(c, c, dist * U, ang)
+        d.ellipse([x - rr * U, y - rr * U, x + rr * U, y + rr * U], fill=255)
 
-    # decoration, outside the data zone, never touching each other, never disc-like
     placed = []
-    n_dec = rng.randint(4, 10)
-    for _ in range(n_dec):
+    for _ in range(rng.randint(4, 10)):
         kind = decor if decor != "mixed" else rng.choice(["minibrot", "spiral", "rings", "stars", "comets"])
         for _try in range(30):
-            rad = rng.uniform(layout.DECOR_MIN_R + 0.5, layout.CANVAS_HALF - 1.0) * R
+            rad = rng.uniform(layout.DECOR_MIN_R + 0.3, layout.CANVAS_HALF - 0.6) * U
             ang = rng.uniform(0, 360)
             x, y = layout.polar(c, c, rad, ang)
-            if all(math.hypot(x - px, y - py) > 1.7 * R for px, py in placed):
+            if all(math.hypot(x - px, y - py) > 1.1 * U for px, py in placed):
                 placed.append((x, y))
-                a = rng.uniform(0.07, 0.13) * R
+                a = rng.uniform(0.045, 0.085) * U
                 if kind == "minibrot":
                     draw_minibrot(d, x, y, a, ang + 180 + rng.uniform(-25, 25))
                 elif kind == "spiral":
@@ -354,32 +369,32 @@ def black_mask(symbols, R, size, rng, decor):
                 else:
                     draw_comet(d, x, y, a * 0.9, ang + rng.uniform(-30, 30))
                 break
-    # occasional big thin orbit ring around the whole composition
     if rng.random() < 0.35:
-        rr = rng.uniform(layout.DECOR_MIN_R + 0.3, layout.CANVAS_HALF - 0.4) * R
-        d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=255, width=max(1, int(0.03 * R)))
+        rr = rng.uniform(layout.DECOR_MIN_R + 0.2, layout.CANVAS_HALF - 0.3) * U
+        d.ellipse([c - rr, c - rr, c + rr, c + rr], outline=255, width=max(1, int(0.02 * U)))
     return m
 
 
 # ---------------------------------------------------------------- render
-def render(words, wordlist, R=DEFAULT_R, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
+def render(words, wordlist, U=DEFAULT_U, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
     symbols = codec.words_to_symbols(words, wordlist)
     rng = random.Random(codec.message_seed(words))
     st = make_style(rng) if theme == "auto" else THEMES[theme]
-    size = layout.canvas_size(R) * ss
-    Rs = R * ss
+    size = layout.canvas_size(U) * ss
+    Us = U * ss
     c = size / 2.0
 
-    mask = np.array(black_mask(symbols, Rs, size, rng, st["decor"])) > 127
-    dist = cv2.distanceTransform((~mask).astype(np.uint8), cv2.DIST_L2, 5) / Rs
+    interior, band = mandelbrot(size, Us, ss)
+    mask = (np.array(body_mask(symbols, Us, size, rng, st["decor"])) > 127) | interior
+    dist = cv2.distanceTransform((~mask).astype(np.uint8), cv2.DIST_L2, 5) / Us
 
-    # fractal texture: re-roll until it has visible structure near the shapes
-    glow_zone = (dist > 0.05) & (dist < 1.4)
+    # seeded fractal texture (re-rolled until it has structure near the shapes)
+    glow_zone = (dist > 0.03) & (dist < 1.0)
     for _ in range(6):
-        T = fractal_field(size, c, Rs, rng)
+        T = fractal_field(size, c, Us, rng)
         if float(T[glow_zone].std()) > 0.22:
             break
-    reach = rng.uniform(0.85, 1.4)
+    reach = rng.uniform(0.6, 1.0)
     shape = 0.5 + 1.0 * T
     if st["rays"]:
         yy, xx = np.mgrid[0:size, 0:size].astype(np.float32)
@@ -388,17 +403,20 @@ def render(words, wordlist, R=DEFAULT_R, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
     if st["clouds"]:
         N = cv2.resize(_fbm(size // 4, rng), (size, size), interpolation=cv2.INTER_LINEAR)
         shape = shape * (1 - st["clouds"] + 2 * st["clouds"] * N)
-    u = dist / reach * shape
+    u_dist = dist / reach * shape
+    # authentic Mandelbrot fringe: bright where the escape count is high (near the set)
+    u_mandel = 1.3 * (1 - band) ** 2 * rng.uniform(0.9, 1.6)
+    u = np.minimum(u_dist, u_mandel)
 
     xs = np.array([s for s, _ in st["ramp"]], np.float32)
     cols = np.array([col for _, col in st["ramp"]], np.float32)
     img = np.stack([np.interp(u, xs, cols[:, k]) for k in range(3)], axis=-1)
-    fil = np.clip(1 - np.abs(T - 0.5) / 0.05, 0, 1) * np.exp(-dist / (0.7 * reach)) * 0.85
+    fil = np.clip(1 - np.abs(T - 0.5) / 0.05, 0, 1) * np.exp(-dist / (0.5 * reach)) * 0.85
     img = img * (1 - fil[..., None]) + np.array(st["filament"], np.float32) * fil[..., None]
 
     if st["stars"]:
         yy, xx = np.mgrid[0:size, 0:size]
-        far = np.hypot(xx - c, yy - c) > 4.2 * Rs
+        far = np.hypot(xx - c, yy - c) > 2.9 * Us
         n_star = int(size * size / 2500)
         for x, y in zip(rng.choices(range(size), k=n_star), rng.choices(range(size), k=n_star)):
             if far[y, x]:

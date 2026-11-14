@@ -1,8 +1,8 @@
 # How it works — "Hidden in Plain Sight" entry
 
-**One sentence:** the secret phrase becomes the *geometry* of a fractal: 15 satellite bulbs
-around a Mandelbrot-like body, where each bulb's size and distance from the centre spell
-one symbol, and the glow around them is a Julia set seeded by the phrase itself.
+**One sentence:** the secret phrase becomes the *geometry* of a fractal: 15 glowing satellites
+around a real Mandelbrot set, where each satellite's size and distance from the centre spell
+one symbol, and everything else in the picture is a fractal seeded by the phrase itself.
 
 ## Encoding (sender)
 
@@ -12,11 +12,14 @@ one symbol, and the glow around them is a Julia set seeded by the phrase itself.
 3. **Error correction.** Reed-Solomon over GF(32) adds 6 parity symbols → 15 symbols.
    Any 3 of the 15 can be destroyed and the phrase still decodes.
 4. **Symbol → bulb.** Each symbol (0–31) becomes one black (or bright) satellite bulb:
-   - high 2 bits → bulb **size** (4 radii: 0.11, 0.18, 0.25, 0.32 of the main disc)
-   - low 3 bits → bulb **distance** from the centre (8 radii: 2.2 … 3.6 of the main disc)
+   - high 2 bits → bulb **size** (4 radii: 0.07, 0.11, 0.15, 0.19 Mandelbrot units)
+   - low 3 bits → bulb **distance** from the origin (8 radii: 1.45 … 2.50 units)
    - the slot number (0–14) → the bulb's **direction** (20° apart, antenna side left free)
-5. **Marker.** The big disc + antenna + period-2 bulb (the Mandelbrot silhouette) is the
-   reference: its radius gives the scale, its antenna gives the rotation.
+5. **Marker.** The centre of the picture is a *real* Mandelbrot set, rendered by iteration
+   with its antenna pointing up. It is the reference: the main cardioid and the period-2
+   bulb are two blobs whose centroids are exactly 0.825 units apart along the antenna axis,
+   so their distance gives the scale and their direction gives the rotation. No artificial
+   disc, no needle: the fractal itself is the ruler and the compass.
 6. **Art.** A SHA-256 hash of the phrase seeds everything decorative, so each phrase has its
    own picture. The seed picks:
    - the **palette**: dark or bright bodies, a deep / mid / light background, and a colour
@@ -35,9 +38,12 @@ one symbol, and the glow around them is a Julia set seeded by the phrase itself.
 
 ## Decoding (receiver)
 
-1. **Find the body.** Threshold very dark (or very bright) pixels; the most disc-like blob
-   with the largest inscribed circle is the main body. Its sub-pixel radius = scale.
-2. **Find the antenna.** Dark pixels just outside the disc point along the antenna = rotation.
+1. **Find the Mandelbrot.** Threshold very dark (or very bright) pixels and take the big
+   blobs. Erode a candidate a little: the main cardioid and the period-2 bulb fall apart
+   into two pieces (they only touch at a point). Their centroid distance = scale, their
+   direction = rotation, and the complex origin is a fixed offset from the cardioid centroid.
+2. **(Candidates.)** The three biggest blobs are tried and the one that yields the most
+   satellites wins, so a large black region of the background fractal can never fool it.
 3. **Read the bulbs.** For each of the 15 directions, take the blob sitting there.
    Its radius (sub-pixel edge fit, same method as the main disc) → size → 2 bits;
    its centroid distance → 3 bits.

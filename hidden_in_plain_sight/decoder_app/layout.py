@@ -1,38 +1,45 @@
-"""Geometry for the Mandelbrot-style layout.
+"""Geometry for the Mandelbrot layout.
 
-The marker is the black main body (disc) with its antenna (stem) and a period-2
-bulb on the antenna, like the Mandelbrot set rotated antenna-up. The 15 data
-symbols are black satellite bulbs around the body: each bulb's SIZE (4 levels,
-2 bits) and DISTANCE from the centre (8 levels, 3 bits) carry one 5-bit symbol.
+The marker is a REAL Mandelbrot set (rendered by iteration), antenna pointing up.
+The decoder finds the two incentres of its body (distance-transform peaks): the
+main cardioid and the period-2 bulb. Their distance gives the scale and their
+direction gives the rotation. No artificial disc or needle.
 
-Everything is in units of the main disc radius R so the decoder can rescale from
-the disc it measures. Angles are degrees in image coordinates (x right, y down):
--90 is straight up, increasing angle is clockwise on screen.
+Everything is in Mandelbrot units U (1 U = the complex-plane unit, DEFAULT_U px).
+Origin = complex 0. Image coordinates: re runs DOWN the image (antenna at the
+top), im runs to the right. Angles are degrees in image coordinates (x right,
+y down): -90 is straight up (the antenna), increasing angle is clockwise.
+
+The 15 data symbols are satellite bulbs: SIZE (4 levels, 2 bits) and DISTANCE
+from the origin (8 levels, 3 bits).
 """
 import math
 
-# marker
-STEM_LEN = 2.0          # antenna from the disc edge to (1 + STEM_LEN) * R
-STEM_WIDTH = 0.22
-P2_BULB_AT = 1.75       # period-2 bulb centre along the antenna
-P2_BULB_R = 0.38
-TIP_DOT_R = 0.12        # tiny "mini-brot" at the antenna tip
+# marker (calibrated through decoder.landmarks on a clean high-resolution render)
+MANDEL_CLIP_R = 1.3        # keep the set only within this radius of the origin ...
+ANTENNA_HALF_WIDTH = 0.10  # ... plus the antenna strip (|im| small, re < 0)
+P1_RE = -0.2272            # cardioid incentre (distance-transform peak), coarse pass
+P2_RE = -1.0001            # bulb incentre, coarse pass
+PEAK_D0 = P1_RE - P2_RE
+C1_RE = -0.1618            # centroid of the cardioid part (re > -0.75), precise pass
+C2_RE = -1.0073            # centroid of the bulb part (-1.28 < re <= -0.75), precise pass
+D0 = C1_RE - C2_RE         # 0.8454 U between the two centroids
+INSCRIBED_R = 0.5033        # inscribed radius of the main body (d2/d1 = 0.489)
 
-# data bulbs: 15 slots spread over 280 degrees, leaving the antenna free
+# data satellites: 15 slots over 280 degrees, leaving the antenna side free
 N_DATA = 15
-SLOT_START = 40.0       # first slot, degrees clockwise from the antenna
+SLOT_START = 40.0
 SLOT_STEP = 20.0
-SIZES = [0.11, 0.18, 0.25, 0.32]                       # bulb radius / R   (2 bits)
-DISTS = [2.2, 2.4, 2.6, 2.8, 3.0, 3.2, 3.4, 3.6]        # bulb centre / R   (3 bits)
+SIZES = [0.07, 0.11, 0.15, 0.19]                                   # radius / U   (2 bits)
+DISTS = [1.45, 1.60, 1.75, 1.90, 2.05, 2.20, 2.35, 2.50]           # centre / U   (3 bits)
 
-# decoration (black mini-brots) only outside this radius; glow is everywhere
-DECOR_MIN_R = 4.5
-CANVAS_HALF = 6.8
+DECOR_MIN_R = 2.9          # decoration only outside this
+CANVAS_HALF = 4.4
 UP = -90.0
 
 
-def canvas_size(R):
-    return int(round(2 * CANVAS_HALF * R))
+def canvas_size(U):
+    return int(round(2 * CANVAS_HALF * U))
 
 
 def data_angle(i):
@@ -44,14 +51,6 @@ def polar(cx, cy, r, angle_deg):
     return cx + r * math.cos(a), cy + r * math.sin(a)
 
 
-def stem_segment(cx, cy, R, rot=0.0):
-    return polar(cx, cy, 0.8 * R, UP + rot), polar(cx, cy, (1 + STEM_LEN) * R, UP + rot)
-
-
 def bulb_geometry(i, size_idx, dist_idx):
-    """(radius/R, distance/R, angle) for slot i with the given symbol halves."""
+    """(radius/U, distance/U, angle) for slot i with the given symbol halves."""
     return SIZES[size_idx], DISTS[dist_idx], data_angle(i)
-
-
-def bulb_centre(cx, cy, R, i, dist_idx, rot=0.0):
-    return polar(cx, cy, DISTS[dist_idx] * R, data_angle(i) + rot)
