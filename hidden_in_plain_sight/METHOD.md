@@ -76,16 +76,17 @@ everything else in the picture (colours, fractal texture, motion) is seeded by t
 
 ## Numbers (test.py, 200 random phrases per theme, 6 conditions each)
 
-| condition | **auto** (per-phrase style) | mandelbrot | space | ember | emerald |
-|---|---|---|---|---|---|
-| clean | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
-| rotated (any angle) + scaled 0.7–1.0 | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
-| re-saved as JPEG (quality 60) | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
-| converted to grayscale | 176/200 | 85/200 | **200/200** | 65/200 | 41/200 |
-| 3 of 15 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
-| rotated + scaled + JPEG + 3 bulbs tampered | 200/200 | 200/200 | 200/200 | 200/200 | 200/200 |
+| condition | **auto** (per-phrase style) | space preset |
+|---|---|---|
+| clean | 200/200 | 200/200 |
+| rotated (any angle) + scaled 0.7–1.0 | 200/200 | 200/200 |
+| re-saved as JPEG (quality 60) | 200/200 | 200/200 |
+| converted to grayscale | 182/200 | **200/200** |
+| 3 of 15 babies tampered | 200/200 | 200/200 |
+| rotated + scaled + JPEG + 3 babies tampered | 200/200 | 200/200 |
 
-Grayscale survives whenever the background is not near-black in luminance: always in the **space**
-preset, in most auto styles, rarely in the deep navy/red/green presets.
-Outside the deliberately tampered bulbs, not a single bulb was misread in any run.
-About 0.2 s per encode + decode.
+Final design (baby Mandelbrots, in-body fill, tilt + zoom), 200 random phrases per column.
+Grayscale survives whenever the background is not near-black in luminance: always in the
+**space** preset, in most auto styles. Outside the deliberately tampered babies, at most one
+baby was misread in any run, and Reed-Solomon absorbed it. About 0.25 s per encode + decode.
+
