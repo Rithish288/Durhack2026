@@ -17,9 +17,15 @@ one symbol, and the glow around them is a Julia set seeded by the phrase itself.
    - the slot number (0–14) → the bulb's **direction** (20° apart, antenna side left free)
 5. **Marker.** The big disc + antenna + period-2 bulb (the Mandelbrot silhouette) is the
    reference: its radius gives the scale, its antenna gives the rotation.
-6. **Art.** A SHA-256 hash of the phrase seeds a Julia-set texture, which warps a distance
-   field around the shapes into the glowing fractal fringe. Decorative "mini-brots" sit
-   outside the data zone. Four colour themes (mandelbrot, space, ember, emerald).
+6. **Art.** A SHA-256 hash of the phrase seeds everything decorative, so each phrase has its
+   own fractal. The seed picks:
+   - the **fractal formula family**: Julia, Burning Ship, cubic Multibrot, Tricorn or Phoenix,
+     plus its constant, zoom and band period;
+   - a **kaleidoscope fold** (1- to 8-fold mirror symmetry) and a **swirl** of the plane;
+   - how far the **glow** reaches, and where the decorative "mini-brots" sit.
+   The texture warps a distance field around the shapes into the glowing fringe. The texture is
+   re-rolled from the same seed stream until it has visible structure near the shapes.
+   Four colour themes (mandelbrot, space, ember, emerald). None of this touches the data shapes.
 
 ## Decoding (receiver)
 

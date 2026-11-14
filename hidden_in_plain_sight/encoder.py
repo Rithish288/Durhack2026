@@ -47,26 +47,73 @@ DEFAULT_THEME = "mandelbrot"
 BG = THEMES[DEFAULT_THEME]["bg"]        # used by test.py for rotation borders
 
 
+FORMULAS = ["julia", "burning_ship", "multibrot3", "tricorn", "phoenix"]
+
+
 def julia_field(size, c, R, rng):
-    """Escape-time band texture in [0,1), seeded; used to make the glow fractal."""
+    """Escape-time band texture in [0,1), seeded from the phrase.
+
+    Three phrase-driven modifiers make every message look different:
+      1. the fractal FORMULA family (Julia, Burning Ship, cubic multibrot, Tricorn, Phoenix)
+      2. a KALEIDOSCOPE fold (n-fold mirror symmetry) plus a SWIRL of the plane
+      3. the Julia constant, spin, zoom and band period
+    Only the glow texture changes; the shapes that carry the data are untouched.
+    """
     lo = max(240, size // 2)
     ys, xs = np.mgrid[0:lo, 0:lo].astype(np.float32)
     k = size / lo
     px, py = xs * k - c, ys * k - c
-    spin = rng.uniform(0, 2 * math.pi)
-    rad = np.hypot(px, py) / (layout.CANVAS_HALF * R) * 1.8
-    th = np.arctan2(py, px) + spin
-    z = (rad * np.cos(th) + 1j * rad * np.sin(th)).astype(np.complex64)
-    cre, cim = rng.choice(JULIA_SEEDS)
-    cval = complex(cre + rng.uniform(-0.02, 0.02), cim + rng.uniform(-0.02, 0.02))
+    rad = np.hypot(px, py) / (layout.CANVAS_HALF * R)
+    th = np.arctan2(py, px)
+
+    # --- modifier 2: swirl + kaleidoscope -------------------------------------------
+    swirl = rng.choice([0, 0, rng.uniform(-2.5, 2.5)])
+    th = th + swirl * np.log(rad + 0.05)
+    folds = rng.choice([1, 1, 3, 4, 5, 6, 7, 8])
+    if folds > 1:
+        sector = 2 * math.pi / folds
+        th = np.abs((th % sector) - sector / 2)        # mirror inside each sector
+    th = th + rng.uniform(0, 2 * math.pi)
+    zoom = rng.uniform(1.3, 2.4)
+    z = (zoom * rad * np.cos(th) + 1j * zoom * rad * np.sin(th)).astype(np.complex64)
+
+    # --- modifier 1: formula family --------------------------------------------------
+    formula = rng.choice(FORMULAS)
+    p = 0.0
+    if formula == "multibrot3":
+        cval = complex(rng.uniform(-0.6, 0.6), rng.uniform(-0.6, 0.6))
+    elif formula == "burning_ship":
+        cval = complex(rng.uniform(-1.8, -0.2), rng.uniform(-0.1, 0.9))
+    elif formula == "tricorn":
+        cval = complex(rng.uniform(-1.0, 0.4), rng.uniform(-0.8, 0.8))
+    elif formula == "phoenix":
+        cval = complex(rng.uniform(0.3, 0.6), 0.0)
+        p = rng.uniform(-0.6, -0.3)
+    else:
+        cre, cim = rng.choice(JULIA_SEEDS)
+        cval = complex(cre + rng.uniform(-0.02, 0.02), cim + rng.uniform(-0.02, 0.02))
+
     count = np.zeros(z.shape, np.float32)
     alive = np.ones(z.shape, bool)
+    prev = np.zeros_like(z)
     for i in range(60):
-        z[alive] = z[alive] ** 2 + cval
+        za = z[alive]
+        if formula == "julia":
+            zn = za * za + cval
+        elif formula == "burning_ship":
+            zn = (np.abs(za.real) + 1j * np.abs(za.imag)) ** 2 + cval
+        elif formula == "multibrot3":
+            zn = za * za * za + cval
+        elif formula == "tricorn":
+            zn = np.conj(za) ** 2 + cval
+        else:  # phoenix: z_{n+1} = z^2 + c + p * z_{n-1}
+            zn = za * za + cval + p * prev[alive]
+            prev[alive] = za
+        z[alive] = zn
         esc = alive & (np.abs(z) > 4)
         count[esc] = i + 1 - np.log2(np.log(np.abs(z[esc]) + 1e-9))
         alive &= ~esc
-    t = (count / rng.uniform(3.5, 6.0)) % 1.0
+    t = (count / rng.uniform(3.5, 7.0)) % 1.0
     t[alive] = 0.5
     return cv2.resize(t, (size, size), interpolation=cv2.INTER_LINEAR)
 
@@ -137,13 +184,20 @@ def render(words, wordlist, R=DEFAULT_R, ss=SUPERSAMPLE, theme=DEFAULT_THEME):
     mask = np.array(black_mask(symbols, Rs, size, rng)) > 127
     dist = cv2.distanceTransform((~mask).astype(np.uint8), cv2.DIST_L2, 5) / Rs
 
-    # fractal glow: distance field warped by a Julia texture, plus bright filaments
-    T = julia_field(size, c, Rs, rng)
-    u = dist * (0.5 + 1.0 * T)
+    # fractal glow: distance field warped by a seeded fractal texture, plus bright filaments.
+    # Re-roll the texture (same seeded stream) until it has real structure near the shapes,
+    # so no phrase ends up with plain round halos.
+    glow_zone = (dist > 0.05) & (dist < 1.4)
+    for _ in range(6):
+        T = julia_field(size, c, Rs, rng)
+        if float(T[glow_zone].std()) > 0.22:
+            break
+    reach = rng.uniform(0.85, 1.35)            # modifier 3: how far the glow spreads
+    u = dist / reach * (0.5 + 1.0 * T)
     xs = np.array([s for s, _ in th["ramp"]], np.float32)
     cols = np.array([col for _, col in th["ramp"]], np.float32)
     img = np.stack([np.interp(u, xs, cols[:, k]) for k in range(3)], axis=-1)
-    fil = np.clip(1 - np.abs(T - 0.5) / 0.05, 0, 1) * np.exp(-dist / 0.7) * 0.85
+    fil = np.clip(1 - np.abs(T - 0.5) / 0.05, 0, 1) * np.exp(-dist / (0.7 * reach)) * 0.85
     img = img * (1 - fil[..., None]) + np.array(th["filament"], np.float32) * fil[..., None]
 
     if th["stars"]:
