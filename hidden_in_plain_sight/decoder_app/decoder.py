@@ -157,8 +157,8 @@ def refine_radius(bgr, cx, cy, R0, stem_angle=None, polarity="dark"):
 # ---------------------------------------------------------------- bulbs
 def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
     """For each slot pick the dark blob sitting in that direction; size and distance -> symbol."""
-    min_area = 0.3 * math.pi * (layout.SIZES[0] * R) ** 2
-    max_area = 2.5 * math.pi * (layout.SIZES[-1] * R) ** 2
+    min_area = 0.35 * math.pi * (layout.SIZES[0] * R) ** 2
+    max_area = 2.0 * math.pi * (layout.SIZES[-1] * R) ** 2
     slots = []
     for i in range(layout.N_DATA):
         a = layout.data_angle(i) + rot
@@ -182,7 +182,7 @@ def read_bulbs(bgr, polarity, cx, cy, R, rot, marker_label, stats, cents):
             slots.append(dict(symbol=0, size=0, dist=0, ok=False, pos=layout.polar(cx, cy, 2.0 * R, a), r_px=0))
             continue
         area, x, y, dist = best
-        r_px = refine_radius(bgr, x, y, math.sqrt(area / math.pi), None, polarity)
+        r_px = math.sqrt(area / math.pi)          # area-equivalent radius (shape-independent)
         r = r_px / R
         si = int(np.argmin([abs(r - s) for s in layout.SIZES]))
         di = int(np.argmin([abs(dist - s) for s in layout.DISTS]))

@@ -51,7 +51,7 @@ def paint_slots(bgr, symbols, n, rng, style):
         si, di = codec.symbol_to_glyph(symbols[i])
         rr, dist, ang = layout.bulb_geometry(i, si, di)
         x, y = layout.polar(c, c, dist * R, ang)
-        cv2.circle(out, (int(round(x)), int(round(y))), int((rr + 0.08) * R), bg, -1, cv2.LINE_AA)
+        cv2.circle(out, (int(round(x)), int(round(y))), int((layout.BABY_EXTENT * rr + 0.06) * R), bg, -1, cv2.LINE_AA)
         wrong = rng.choice([s for s in range(32) if s != symbols[i]])
         si2, di2 = codec.symbol_to_glyph(wrong)
         rr2, dist2, _ = layout.bulb_geometry(i, si2, di2)

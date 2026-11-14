@@ -10,8 +10,10 @@ Origin = complex 0. Image coordinates: re runs DOWN the image (antenna at the
 top), im runs to the right. Angles are degrees in image coordinates (x right,
 y down): -90 is straight up (the antenna), increasing angle is clockwise.
 
-The 15 data symbols are satellite bulbs: SIZE (4 levels, 2 bits) and DISTANCE
-from the origin (8 levels, 3 bits).
+The 15 data symbols are "baby" Mandelbrot sets orbiting the mother: each baby's
+SIZE (area-equivalent radius, 4 levels, 2 bits) and the DISTANCE of its centroid
+from the origin (8 levels, 3 bits) carry one 5-bit symbol. Babies may be rotated
+freely (art); size and centroid do not depend on rotation.
 """
 import math
 
@@ -30,11 +32,13 @@ INSCRIBED_R = 0.5033        # inscribed radius of the main body (d2/d1 = 0.489)
 N_DATA = 15
 SLOT_START = 40.0
 SLOT_STEP = 20.0
-SIZES = [0.07, 0.11, 0.15, 0.19]                                   # radius / U   (2 bits)
-DISTS = [1.45, 1.60, 1.75, 1.90, 2.05, 2.20, 2.35, 2.50]           # centre / U   (3 bits)
+SIZES = [0.06, 0.095, 0.13, 0.165]                                 # area-equivalent radius / U (2 bits)
+DISTS = [1.60, 1.75, 1.90, 2.05, 2.20, 2.35, 2.50, 2.65]           # centroid distance / U (3 bits)
+BABY_CLIP_R = 1.3          # a baby is the Mandelbrot set within this radius of its own origin
+BABY_EXTENT = 1.45         # max reach of a baby from its centroid, in units of its r_eq
 
-DECOR_MIN_R = 2.9          # decoration only outside this
-CANVAS_HALF = 4.4
+DECOR_MIN_R = 3.0          # decoration only outside this
+CANVAS_HALF = 4.5
 UP = -90.0
 
 

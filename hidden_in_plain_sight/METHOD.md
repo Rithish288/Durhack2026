@@ -1,8 +1,8 @@
 # How it works — "Hidden in Plain Sight" entry
 
-**One sentence:** the secret phrase becomes the *geometry* of a fractal: 15 glowing satellites
-around a real Mandelbrot set, where each satellite's size and distance from the centre spell
-one symbol, and everything else in the picture is a fractal seeded by the phrase itself.
+**One sentence:** a mother Mandelbrot set with 15 baby Mandelbrots orbiting it. The mother is
+the ruler and the compass; each baby's size and orbit radius spell one symbol of the message;
+everything else in the picture (colours, fractal texture, motion) is seeded by the phrase itself.
 
 ## Encoding (sender)
 
@@ -11,10 +11,11 @@ one symbol, and everything else in the picture is a fractal seeded by the phrase
 2. **Number → 9 symbols.** The 45 bits are cut into 9 symbols of 5 bits (values 0–31).
 3. **Error correction.** Reed-Solomon over GF(32) adds 6 parity symbols → 15 symbols.
    Any 3 of the 15 can be destroyed and the phrase still decodes.
-4. **Symbol → bulb.** Each symbol (0–31) becomes one black (or bright) satellite bulb:
-   - high 2 bits → bulb **size** (4 radii: 0.07, 0.11, 0.15, 0.19 Mandelbrot units)
-   - low 3 bits → bulb **distance** from the origin (8 radii: 1.45 … 2.50 units)
-   - the slot number (0–14) → the bulb's **direction** (20° apart, antenna side left free)
+4. **Symbol → baby.** Each symbol (0–31) becomes one baby Mandelbrot (a real, iterated
+   silhouette, rotated any way the art likes):
+   - high 2 bits → the baby's **size** (area-equivalent radius: 0.06, 0.095, 0.13, 0.165 units)
+   - low 3 bits → the baby's **orbit radius**, centroid distance from the origin (1.60 … 2.65 units)
+   - the slot number (0–14) → the baby's **direction** (20° apart, antenna side left free)
 5. **Marker.** The centre of the picture is a *real* Mandelbrot set, rendered by iteration
    with its antenna pointing up. It is the reference: the main cardioid and the period-2
    bulb are two blobs whose centroids are exactly 0.825 units apart along the antenna axis,
@@ -47,10 +48,11 @@ one symbol, and everything else in the picture is a fractal seeded by the phrase
    direction = rotation, and the complex origin is a fixed offset from the cardioid centroid.
 2. **(Candidates.)** The three biggest blobs are tried and the one that yields the most
    satellites wins, so a large black region of the background fractal can never fool it.
-3. **Read the bulbs.** For each of the 15 directions, take the blob sitting there.
-   Its radius (sub-pixel edge fit, same method as the main disc) → size → 2 bits;
-   its centroid distance → 3 bits.
-4. **Correct and translate.** Reed-Solomon fixes up to 3 wrong bulbs; 45 bits → 3 indices → 3 words.
+3. **Read the babies.** For each of the 15 directions, take the blob sitting there.
+   Its area → area-equivalent radius → size → 2 bits; its centroid distance → orbit → 3 bits.
+   Both are independent of the baby's rotation, and the four size levels differ by 2.5x in
+   area, so JPEG softening of the babies' fine bulbs does not matter.
+4. **Correct and translate.** Reed-Solomon fixes up to 3 wrong babies; 45 bits → 3 indices → 3 words.
 5. An overlay PNG shows every measurement and which bulbs were corrected.
 
 ## Why it is different (and easy to say on stage)
@@ -61,8 +63,12 @@ one symbol, and everything else in the picture is a fractal seeded by the phrase
   its own unique nebula — the picture *is* the message, not a wrapper around it.
 - **Robust by design.** Rotation and scale are undone by the marker; JPEG re-saving and
   3 vandalised bulbs are tolerated by the measurement margins and Reed-Solomon.
-- **Nothing machine-readable to the eye.** No grid, no modules, no quiet zone — just a
-  Mandelbrot-style composition. The bulbs look like what a Mandelbrot set naturally has.
+- **Nothing machine-readable to the eye.** No grid, no modules, no quiet zone — a Mandelbrot
+  family portrait. Nobody expects the babies' sizes and orbits to be a sentence.
+- **Why not hide the data in the fractal itself?** Because fractals are chaotic: a tiny
+  parameter change rewrites the whole shape, and recovering parameters from a rotated,
+  resized, re-compressed picture is hopeless. So the data lives in robust geometry
+  (areas and centroids) and the fractal is the disguise.
 
 ## Numbers (test.py, 200 random phrases per theme, 6 conditions each)
 

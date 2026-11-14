@@ -340,17 +340,59 @@ def mandelbrot(size, U, ss):
     return interior, band
 
 
+_BABY = None
+
+
+def baby_sprite(px_per_unit=256):
+    """High-resolution silhouette of the Mandelbrot set (|z| < BABY_CLIP_R), plus its
+    area-equivalent radius and centroid in units. Computed once."""
+    global _BABY
+    if _BABY is not None:
+        return _BABY
+    n = int(2 * layout.BABY_CLIP_R * px_per_unit) + 2
+    c = n / 2.0
+    ys, xs = np.mgrid[0:n, 0:n].astype(np.float32)
+    C = ((ys - c) / px_per_unit + 1j * (xs - c) / px_per_unit).astype(np.complex64)   # re down, im right
+    z = np.zeros_like(C)
+    alive = np.ones(C.shape, bool)
+    with np.errstate(all="ignore"):
+        for _ in range(200):
+            z[alive] = z[alive] ** 2 + C[alive]
+            alive &= np.abs(z) <= 2
+    alive &= np.abs(C) < layout.BABY_CLIP_R
+    sprite = alive.astype(np.float32)
+    area_units = sprite.sum() / px_per_unit ** 2
+    r_eq_units = math.sqrt(area_units / math.pi)
+    cy = (ys * sprite).sum() / sprite.sum()
+    cx = (xs * sprite).sum() / sprite.sum()
+    _BABY = dict(img=sprite, ppu=px_per_unit, r_eq=r_eq_units, centroid=(cx, cy))
+    return _BABY
+
+
+def draw_baby(canvas, x, y, r_eq_px, angle_deg, value=1.0):
+    """Paste a baby Mandelbrot so that its centroid is at (x, y), with the given
+    area-equivalent radius in pixels and an arbitrary rotation."""
+    b = baby_sprite()
+    scale = r_eq_px / (b["r_eq"] * b["ppu"])             # canvas px per sprite px
+    M = cv2.getRotationMatrix2D(b["centroid"], angle_deg, scale)
+    M[0, 2] += x - b["centroid"][0]
+    M[1, 2] += y - b["centroid"][1]
+    w = cv2.warpAffine(b["img"], M, (canvas.shape[1], canvas.shape[0]), flags=cv2.INTER_AREA,
+                       borderMode=cv2.BORDER_CONSTANT, borderValue=0)
+    np.maximum(canvas, w * value, out=canvas)
+
+
 def body_mask(symbols, U, size, rng, decor):
-    """(satellite bulbs, decoration) in body colour as two mode-L images.
-    The Mandelbrot body is added separately."""
-    mb = Image.new("L", (size, size), 0)
-    db = ImageDraw.Draw(mb)
+    """(baby Mandelbrots carrying the data, decoration) in body colour as two mode-L images.
+    The mother Mandelbrot is added separately."""
     c = size / 2.0
+    babies = np.zeros((size, size), np.float32)
     for i, sym in enumerate(symbols):
         si, di = codec.symbol_to_glyph(sym)
         rr, dist, ang = layout.bulb_geometry(i, si, di)
         x, y = layout.polar(c, c, dist * U, ang)
-        db.ellipse([x - rr * U, y - rr * U, x + rr * U, y + rr * U], fill=255)
+        draw_baby(babies, x, y, rr * U, rng.uniform(0, 360))
+    mb = Image.fromarray((babies > 0.5).astype(np.uint8) * 255)
 
     m = Image.new("L", (size, size), 0)
     d = ImageDraw.Draw(m)
