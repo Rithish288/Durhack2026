@@ -1,0 +1,6 @@
+opencv-python
+numpy
+reedsolo
+Pillow
+Flask
+flask-cors
