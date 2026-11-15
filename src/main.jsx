@@ -113,25 +113,24 @@ function App() {
     <main className="page-shell">
       <header className="topbar">
         <div className="brand-mark" aria-label="Metro">
-          METRO
+         {" M E  T R O"}
         </div>
         <div className="status"><span /> WORD ENCODER</div>
       </header>
 
       <section className="hero">
-        <p className="eyebrow">PERSONALISED ARTWORK / 001</p>
-        <h1>Turn three words<br /><em>into a mark.</em></h1>
+        <h1>Turn three words<br />into a masterpiece.</h1>
         <p className="intro">
-          Upload your word list, choose a trio, and create a one-of-one encoded artwork.
-          Leave the words blank and we’ll pick three at random.
+          Upload your word list, choose three wrods, and create a one-of-one encoded artwork.
+          Leave the words blank and three words will be chosen at random.
         </p>
       </section>
 
       <form className="generator-card" onSubmit={generate}>
         <div className="card-heading">
           <div>
-            <p className="eyebrow">01 / SOURCE</p>
-            <h2>Bring your words</h2>
+            <p className="eyebrow">01 / CSV File</p>
+            <h2>Upload Here</h2>
           </div>
           <span className="card-number">A</span>
         </div>
@@ -150,7 +149,7 @@ function App() {
         <div className="card-heading words-heading">
           <div>
             <p className="eyebrow">02 / INPUT</p>
-            <h2>Choose your trio <span>(optional)</span></h2>
+            <h2>Choose your three words<span>(optional)</span></h2>
           </div>
           <span className="random-note">Blank = random</span>
         </div>
@@ -194,7 +193,7 @@ function App() {
         <section className="result-card">
           <div className="result-copy">
             <p className="eyebrow">YOUR GENERATED MARK</p>
-            <h2>Made from<br /><em>{result.words.join(" · ")}</em></h2>
+            <h2>Made from<br />{result.words.join(" · ")}</h2>
             <a className="download-link" href={result.image} download="durhack-artwork.png">
               Download PNG <span>↓</span>
             </a>
@@ -207,14 +206,12 @@ function App() {
         <div className="card-heading">
           <div>
             <p className="eyebrow">03 / DECODE</p>
-            <h2>Read an existing mark</h2>
+            <h2>Decode the masterpiece</h2>
           </div>
           <span className="card-number">B</span>
         </div>
         <p className="decode-copy">
-          Upload a generated artwork image to recover the three words encoded inside it.
-          The default dictionary is used automatically; keep the CSV selected above only
-          when the artwork was made with a custom dictionary.
+          Upload a generated artwork image via a photograph or the image export.
         </p>
         <form onSubmit={decode}>
           <label className={`upload-zone decoder-upload ${decodeImage ? "has-file" : ""}`}>
@@ -244,7 +241,7 @@ function App() {
         )}
       </section>
 
-      <footer>BUILT FOR THE CURIOUS <span>✦</span> DURHACK</footer>
+      <footer>BUILT FOR THE SAKE OF IT <span>✦</span> DURHACK</footer>
     </main>
   );
 }
